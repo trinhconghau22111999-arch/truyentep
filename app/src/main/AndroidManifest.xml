@@ -31,6 +31,8 @@
         </activity>
 
         <activity android:name=".CameraActivity" android:exported="false" />
+        <activity android:name=".PhotoCaptureActivity" android:exported="false" />
+        <activity android:name=".SendFileActivity" android:exported="false" />
 
         <receiver android:name=".BootReceiver" android:exported="false">
             <intent-filter>

@@ -1,19 +1,21 @@
 <resources>
     <string name="app_name">QR Cam</string>
 
-    <string name="consent_title">Dùng điện thoại này làm webcam</string>
-    <string name="consent_body">Ứng dụng này sẽ:\n\n• Bật camera SAU và truyền hình ảnh thời gian thực sang máy tính đang chạy Qrtuxa\n• Chạy nền liên tục — kể cả khi tắt màn hình\n• Tự kết nối lại nếu mạng bị gián đoạn\n\nChỉ máy tính nhập đúng mã 6 số mới xem được. Máy tính KHÔNG thể điều khiển hay thao tác gì trên điện thoại này.</string>
-    <string name="consent_checkbox">Tôi đồng ý dùng điện thoại này làm webcam</string>
-    <string name="btn_generate_code">Bắt đầu làm Webcam</string>
+    <string name="consent_title">Dùng điện thoại này để gửi ảnh/tệp cho máy tính</string>
+    <string name="consent_body">Ứng dụng này sẽ:\n\n• Cho phép chụp ảnh rồi gửi ngay sang máy tính đang chạy Qrtuxa\n• Cho phép chọn tệp/ảnh/video có sẵn trên máy để gửi sang máy tính\n• Chỉ truyền khi cả điện thoại và máy tính đang kết nối thành công với nhau\n\nChỉ máy tính nhập đúng mã 6 số mới nhận được. Máy tính KHÔNG thể điều khiển hay thao tác gì trên điện thoại này.</string>
+    <string name="consent_checkbox">Tôi đồng ý dùng điện thoại này để gửi ảnh/tệp</string>
+    <string name="btn_generate_code">Bắt đầu</string>
 
-    <string name="pairing_code_label">Mã kết nối của webcam này</string>
+    <string name="pairing_code_label">Mã kết nối của máy này</string>
     <string name="pairing_code_hint">Nhập mã này vào QR Cam trên máy tính (Qrtuxa)</string>
-    <string name="btn_end_session">Dừng webcam</string>
+    <string name="btn_end_session">Dừng</string>
+    <string name="btn_take_photo">📷 Chụp ảnh</string>
+    <string name="btn_send_file">📤 Gửi tệp</string>
 
-    <string name="battery_optim_warning">Chưa loại trừ khỏi tối ưu pin — hệ thống có thể tắt webcam khi màn hình tắt lâu. Nên bật để chạy ổn định.</string>
+    <string name="battery_optim_warning">Chưa loại trừ khỏi tối ưu pin — hệ thống có thể ngắt kết nối khi màn hình tắt lâu. Nên bật để gửi ổn định.</string>
     <string name="btn_battery_fix">Bỏ qua tối ưu pin cho app này</string>
 
-    <string name="notif_channel_name">QR Cam đang chạy</string>
-    <string name="notif_title">QR Cam đang hoạt động</string>
-    <string name="notif_text">Webcam đang bật và sẵn sàng kết nối với máy tính. Chạm để dừng.</string>
+    <string name="notif_channel_name">Sẵn sàng gửi ảnh/tệp</string>
+    <string name="notif_title">Sẵn sàng kết nối với máy tính</string>
+    <string name="notif_text">Đang chờ máy tính kết nối để gửi ảnh/tệp. Chạm để dừng.</string>
 </resources>

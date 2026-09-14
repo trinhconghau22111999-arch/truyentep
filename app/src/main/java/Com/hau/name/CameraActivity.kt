@@ -34,6 +34,8 @@ class CameraActivity : AppCompatActivity() {
     private lateinit var layoutPairingCode: android.widget.LinearLayout
     private lateinit var textPairingCode: TextView
     private lateinit var btnEndSession: Button
+    private lateinit var btnTakePhoto: Button
+    private lateinit var btnSendFile: Button
 
     private var roomCode: String? = null
 
@@ -46,6 +48,8 @@ class CameraActivity : AppCompatActivity() {
         layoutPairingCode = findViewById(R.id.layout_pairing_code)
         textPairingCode = findViewById(R.id.text_pairing_code)
         btnEndSession = findViewById(R.id.btn_end_session)
+        btnTakePhoto = findViewById(R.id.btn_take_photo)
+        btnSendFile = findViewById(R.id.btn_send_file)
 
         checkboxConsent.setOnCheckedChangeListener { _, isChecked ->
             btnStart.isEnabled = isChecked
@@ -54,6 +58,16 @@ class CameraActivity : AppCompatActivity() {
 
         btnStart.setOnClickListener { requestCameraPermissionThenStart() }
         btnEndSession.setOnClickListener { endSession() }
+        btnTakePhoto.setOnClickListener {
+            startActivity(Intent(this, PhotoCaptureActivity::class.java).apply {
+                putExtra(PhotoCaptureActivity.EXTRA_ROOM_CODE, roomCode)
+            })
+        }
+        btnSendFile.setOnClickListener {
+            startActivity(Intent(this, SendFileActivity::class.java).apply {
+                putExtra(SendFileActivity.EXTRA_ROOM_CODE, roomCode)
+            })
+        }
 
         // Nếu service camera đang chạy sẵn (vd. quay lại màn hình sau khi thoát app),
         // hiển thị lại mã đang hoạt động thay vì bắt bấm lại từ đầu.
