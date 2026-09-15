@@ -9,7 +9,7 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "Com.qrtuxacam.name"
+        applicationId = "qr.truyentep"
         minSdk = 24
         targetSdk = 34
         versionCode = 1
