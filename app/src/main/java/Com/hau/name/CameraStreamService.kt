@@ -73,6 +73,39 @@ class CameraStreamService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+    }
+
+    /**
+     * Goi tu PhotoCaptureActivity/SendFileActivity de gui 1 tep/anh sang TAT
+     * CA may xem hien dang ket noi thanh cong (co the co nhieu may tinh cung
+     * xem 1 luc, gui cho tat ca). May xem nao chua ket noi xong (dang thu
+     * lai) se KHONG nhan duoc lan gui nay - dung dung yeu cau "chi truyen
+     * khi ca 2 dang ket noi thanh cong".
+     *
+     * @return so may xem THAT SU nhan duoc (da bat dau gui) - 0 nghia la
+     *   khong co may xem nao dang ket noi luc nay.
+     */
+    fun sendFileToAllViewers(
+        fileBytes: ByteArray, fileName: String, mimeType: String,
+        onAnyResult: (viewerId: String, success: Boolean) -> Unit = { _, _ -> }
+    ): Int {
+        var sentCount = 0
+        for ((viewerId, conn) in viewerConns) {
+            val pcm = conn.peerConnectionManager ?: continue
+            if (!pcm.isReadyToSendFile()) continue
+            sentCount++
+            Thread {
+                pcm.sendFile(fileBytes, fileName, mimeType, onResult = { success ->
+                    handler.post { onAnyResult(viewerId, success) }
+                })
+            }.start()
+        }
+        return sentCount
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP_SHARING) {
             stopping = true
@@ -359,6 +392,7 @@ class CameraStreamService : Service() {
     override fun onDestroy() {
         stopping = true
         cleanupSession()
+        instance = null
         super.onDestroy()
     }
 
@@ -373,5 +407,10 @@ class CameraStreamService : Service() {
 
         private const val BASE_RECONNECT_DELAY_MS = 2000L
         private const val MAX_RECONNECT_DELAY_MS = 30_000L
+
+        /** Tham chieu toi service dang chay (null neu chua bat/da dung) - de
+         *  PhotoCaptureActivity/SendFileActivity goi sendFileToAllViewers(). */
+        @Volatile var instance: CameraStreamService? = null
+            private set
     }
 }

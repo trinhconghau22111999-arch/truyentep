@@ -28,6 +28,12 @@ private const val TAG = "PeerConnectionManager"
 private const val MAX_VIDEO_BITRATE_BPS = 2_000_000
 private const val MIN_VIDEO_BITRATE_BPS = 300_000
 
+// Gui tep/anh qua DataChannel: kich thuoc 1 doan - 16KB la muc an toan, tuong thich rong khap
+// cac trinh duyet/thu vien WebRTC (SCTP over DTLS ly thuyet cho phep lon hon nhung 16KB tranh
+// moi rui ro nghen/rot goi tren nhieu thiet bi/mang khac nhau).
+private const val FILE_CHUNK_SIZE = 16 * 1024
+private const val DATA_CHANNEL_LABEL = "filetransfer"
+
 /** ICE servers dùng STUN công khai của Google + TURN dự phòng nếu 2 máy khác mạng LAN. */
 private val ICE_SERVERS = listOf(
     PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
@@ -63,6 +69,12 @@ class PeerConnectionManager(
     private var peerConnection: PeerConnection? = null
     private var localVideoTrack: VideoTrack? = null
     private var remoteVideoTrack: VideoTrack? = null
+    // Kenh gui tep/anh - TACH BIET hoan toan voi video track o tren, dung song
+    // song (khong thay the) theo dung yeu cau giu ca 2 tinh nang. Luon do BEN
+    // NAY (May B - dien thoai) tao ra trong init(), bat ke isHost la gi, vi
+    // dien thoai luon la ben CHU DONG gui tep/anh.
+    private var dataChannel: DataChannel? = null
+    private var onDataChannelOpen: () -> Unit = {}
 
     /** Track video nhận được từ phía bên kia (chỉ có ý nghĩa khi [isHost] = false). */
     fun remoteVideoTrackOrNull(): VideoTrack? = remoteVideoTrack
@@ -149,6 +161,24 @@ class PeerConnectionManager(
             )
         }
 
+        // Kenh gui tep/anh - THEM VAO SONG SONG voi video track, khong thay
+        // the. May B (dien thoai, isHost=true) luon la ben tao kenh nay, vi
+        // no luon la ben chu dong gui tep/anh sang may tinh. Tao TRUOC khi
+        // goi createOffer() de kenh nay duoc dua vao chinh phien dam phan
+        // SDP dau tien (khong can dam phan lai/renegotiate ve sau).
+        if (isHost) {
+            val init = DataChannel.Init().apply { ordered = true }
+            dataChannel = peerConnection?.createDataChannel(DATA_CHANNEL_LABEL, init)
+            dataChannel?.registerObserver(object : DataChannel.Observer {
+                override fun onStateChange() {
+                    Log.d(TAG, "DataChannel state: ${dataChannel?.state()}")
+                    if (dataChannel?.state() == DataChannel.State.OPEN) onDataChannelOpen()
+                }
+                override fun onMessage(buffer: DataChannel.Buffer) {}
+                override fun onBufferedAmountChange(amount: Long) {}
+            })
+        }
+
         signalingClient.start()
     }
 
@@ -206,6 +236,90 @@ class PeerConnectionManager(
         peerConnection?.addIceCandidate(IceCandidate(sdpMid, sdpMLineIndex, candidate))
     }
 
+    /**
+     * Gui 1 tep/anh sang may tinh qua DataChannel, chia thanh tung doan nho.
+     *
+     * CHI cho phep truyen khi CA HAI dang ket noi thanh cong (PeerConnection
+     * o trang thai CONNECTED va DataChannel dang OPEN) - dung yeu cau "chi
+     * cho phep truyen khi ca 2 dang ket noi thanh cong voi nhau". Neu mat
+     * ket noi GIUA CHUNG luc dang gui (kiem tra lai truoc MOI doan), HUY
+     * NGAY - gui thong diep "file-cancel" bao may tinh xoa phan da nhan do,
+     * khong co gang gui tiep/tu noi lai giua chung.
+     *
+     * @param onProgress goi lai sau moi doan da gui (0..100)
+     * @param onResult goi lai 1 lan duy nhat khi xong: true = gui du va thanh
+     *   cong, false = bi huy (mat ket noi giua chung) hoac loi
+     */
+    fun sendFile(
+        fileBytes: ByteArray,
+        fileName: String,
+        mimeType: String,
+        onProgress: (Int) -> Unit = {},
+        onResult: (Boolean) -> Unit = {}
+    ) {
+        val channel = dataChannel
+        val pc = peerConnection
+        if (channel == null || pc == null ||
+            pc.connectionState() != PeerConnection.PeerConnectionState.CONNECTED ||
+            channel.state() != DataChannel.State.OPEN
+        ) {
+            Log.w(TAG, "sendFile: chua ket noi xong (pc=${pc?.connectionState()}, dc=${channel?.state()}) - huy")
+            onResult(false)
+            return
+        }
+
+        val transferId = System.currentTimeMillis().toString() + "_" + (0..9999).random()
+        val totalChunks = if (fileBytes.isEmpty()) 0 else (fileBytes.size + FILE_CHUNK_SIZE - 1) / FILE_CHUNK_SIZE
+
+        val header = org.json.JSONObject().apply {
+            put("type", "file-start")
+            put("transferId", transferId)
+            put("name", fileName)
+            put("mimeType", mimeType)
+            put("size", fileBytes.size)
+            put("totalChunks", totalChunks)
+        }
+        channel.send(DataChannel.Buffer(java.nio.ByteBuffer.wrap(header.toString().toByteArray()), false))
+
+        var offset = 0
+        var chunkIndex = 0
+        while (offset < fileBytes.size) {
+            // Kiem tra lai TRUOC MOI doan - mat ket noi giua chung la huy ngay,
+            // khong co bat ky lan thu lai/noi tiep nao.
+            if (pc.connectionState() != PeerConnection.PeerConnectionState.CONNECTED ||
+                channel.state() != DataChannel.State.OPEN
+            ) {
+                Log.w(TAG, "sendFile: mat ket noi giua chung o doan $chunkIndex/$totalChunks - huy")
+                val cancelMsg = org.json.JSONObject().apply {
+                    put("type", "file-cancel"); put("transferId", transferId)
+                }
+                try {
+                    channel.send(DataChannel.Buffer(java.nio.ByteBuffer.wrap(cancelMsg.toString().toByteArray()), false))
+                } catch (e: Exception) { /* ket noi da chet han, khong gui duoc nua cung khong sao */ }
+                onResult(false)
+                return
+            }
+            val end = minOf(offset + FILE_CHUNK_SIZE, fileBytes.size)
+            val chunk = fileBytes.copyOfRange(offset, end)
+            channel.send(DataChannel.Buffer(java.nio.ByteBuffer.wrap(chunk), true))
+            offset = end
+            chunkIndex++
+            onProgress((chunkIndex * 100) / totalChunks)
+        }
+
+        val endMsg = org.json.JSONObject().apply {
+            put("type", "file-end"); put("transferId", transferId)
+        }
+        channel.send(DataChannel.Buffer(java.nio.ByteBuffer.wrap(endMsg.toString().toByteArray()), false))
+        onResult(true)
+    }
+
+    /** true neu ca PeerConnection va DataChannel deu dang san sang de gui tep. */
+    fun isReadyToSendFile(): Boolean {
+        return peerConnection?.connectionState() == PeerConnection.PeerConnectionState.CONNECTED &&
+            dataChannel?.state() == DataChannel.State.OPEN
+    }
+
     private fun createAndSendOffer() {
         val constraints = MediaConstraints().apply {
             mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "false"))
@@ -231,6 +345,9 @@ class PeerConnectionManager(
 
     fun release() {
         localVideoTrack?.dispose()
+        dataChannel?.close()
+        dataChannel?.dispose()
+        dataChannel = null
         peerConnection?.close()
         peerConnection?.dispose()
         // KHÔNG dispose `factory` ở đây nữa — factory dùng chung, nơi tạo ra nó (Service)

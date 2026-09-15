@@ -156,12 +156,41 @@ class PhotoCaptureActivity : AppCompatActivity() {
     }
 
     /**
-     * GIAI DOAN 3 se noi that vao day: mo/dung ket noi WebRTC DataChannel
-     * toi may tinh dang xem qua [roomCode], gui noi dung anh tai [uri] nay
-     * qua ket noi do. Hien tai chi luu tren may, chua gui di.
+     * Doc noi dung anh vua chup roi gui sang may tinh qua DataChannel (xem
+     * CameraStreamService.sendFileToAllViewers() + PeerConnectionManager.
+     * sendFile()). Chay tren luong nen - doc file + gui tung doan khong nen
+     * lam tren luong UI.
      */
     private fun sendPhotoToComputer(uri: Uri?) {
-        // TODO Giai doan 3
+        if (uri == null) return
+        Thread {
+            try {
+                val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@Thread
+                val name = "anh_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) + ".jpg"
+                val sentCount = CameraStreamService.instance?.sendFileToAllViewers(
+                    bytes, name, "image/jpeg"
+                ) { _, success ->
+                    runOnUiThread {
+                        Toast.makeText(
+                            this,
+                            if (success) "Đã gửi ảnh sang máy tính" else "Gửi ảnh thất bại (mất kết nối giữa chừng)",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                } ?: 0
+                if (sentCount == 0) {
+                    runOnUiThread {
+                        Toast.makeText(
+                            this, "Chưa có máy tính nào đang kết nối để gửi", Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    Toast.makeText(this, "Lỗi khi đọc ảnh để gửi: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }.start()
     }
 
     private fun openLastPhotoViewer() {
