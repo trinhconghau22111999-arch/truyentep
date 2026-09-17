@@ -194,6 +194,15 @@ class PeerConnectionManager(
     }
 
     /**
+     * Gửi offer CHỈ với DataChannel để truyền tệp/ảnh - KHÔNG kèm video track. Dùng cho
+     * app điện thoại này (chỉ chụp & gửi tệp theo yêu cầu, không stream camera liên tục) -
+     * thay cho addVideoTrackAndOffer() ở trên (giữ lại hàm đó cho mục đích khác nếu cần).
+     */
+    fun startFileTransferOffer() {
+        createAndSendOffer()
+    }
+
+    /**
      * Giới hạn bitrate tối đa cho track video màn hình. Không set thì WebRTC có thể ước lượng
      * bitrate ban đầu quá cao so với thực tế mạng di động/TURN relay, gây nghẽn hàng đợi gửi
      * và làm hình ảnh về Máy A bị lag/khựng thay vì hạ chất lượng mượt mà theo băng thông.

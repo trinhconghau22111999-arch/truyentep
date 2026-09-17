@@ -301,15 +301,23 @@ class PhotoCaptureActivity : AppCompatActivity() {
         }
     }
 
-    /** Thoat han ung dung + ngat ket noi webcam: gui ACTION_STOP_SHARING cho
-     *  CameraStreamService de dong phien (dong camera, bao Firebase phong da ket thuc,
-     *  roi tu stopSelf()) giong het khi bam "Kết thúc" tren thong bao, sau do dong toan
-     *  bo Activity trong task (finishAffinity) de ung dung bien han khoi man hinh/da
-     *  nhiem chu khong con chay ngam nua. */
+    /** Thoat han ung dung + ngat ket noi webcam: goi THANG (dong bo, cung tien trinh)
+     *  CameraStreamService.instance?.stopSharingNow() thay vi gui Intent bat dong bo qua
+     *  startService() nhu truoc - dam bao dong PeerConnection + bao Firebase "ended" CHAC
+     *  CHAN hoan tat xong TRUOC KHI finishAffinity(), tranh truong hop he thong dong/kill
+     *  app truoc khi Intent kip duoc xu ly (co the la nguyen nhan gay "thoat roi ma van
+     *  con ket noi"). Neu service da chet san (instance null) thi van gui them Intent
+     *  ACTION_STOP_SHARING de phong khi Android tu khoi dong lai service o dang "mo cu" -
+     *  double-safety, khong hai gi vi cleanupSession() chan chay trung. */
     private fun exitAppAndDisconnect() {
-        startService(Intent(this, CameraStreamService::class.java).apply {
-            action = CameraStreamService.ACTION_STOP_SHARING
-        })
+        val service = CameraStreamService.instance
+        if (service != null) {
+            service.stopSharingNow()
+        } else {
+            startService(Intent(this, CameraStreamService::class.java).apply {
+                action = CameraStreamService.ACTION_STOP_SHARING
+            })
+        }
         finishAffinity()
     }
 

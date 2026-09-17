@@ -20,12 +20,7 @@ import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
-import org.webrtc.Camera2Capturer
-import org.webrtc.Camera2Enumerator
-import org.webrtc.CameraVideoCapturer
 import org.webrtc.EglBase
-import org.webrtc.SurfaceTextureHelper
-import org.webrtc.VideoSource
 
 private const val TAG = "CameraStreamService"
 
@@ -42,14 +37,17 @@ private class ViewerConn(val viewerId: String) {
 }
 
 /**
- * Foreground Service trên Máy B (camera giám sát):
- * 1. Bật camera SAU bằng Camera2Capturer (WebRTC), tạo 1 VideoSource DÙNG CHUNG từ camera thật.
+ * Foreground Service trên điện thoại (Máy Camera):
+ * 1. KHÔNG mở camera vật lý liên tục nữa (app này chỉ dùng để CHỤP & GỬI TỆP theo yêu cầu,
+ *    không phải webcam stream liên tục - việc stream liên tục đã có app máy tính/app stream
+ *    khác đảm nhiệm, không thuộc phạm vi app này). Tránh mở camera ở đây để không tranh chấp
+ *    phần cứng camera với CameraX bên PhotoCaptureActivity khi người dùng mở màn hình chụp ảnh.
  * 2. Giữ 1 PARTIAL_WAKE_LOCK trong suốt vòng đời service -> CPU không ngủ (Doze) khi
- *    người dùng tắt màn hình, camera vẫn chạy và stream bình thường 24/7.
+ *    người dùng tắt màn hình, kết nối vẫn sẵn sàng để gửi tệp/ảnh bất cứ lúc nào.
  * 3. Theo dõi danh sách máy xem (rooms/{code}/viewers) trên Firebase — mỗi máy xem mới xuất
- *    hiện sẽ được cấp 1 PeerConnection RIÊNG (dùng chung 1 VideoSource) để phục vụ độc lập,
- *    tối đa [MAX_VIEWERS_PER_CAMERA] máy cùng lúc.
- * 4. KHÔNG có kênh nhận lệnh điều khiển nào từ Máy A — đây là stream một chiều.
+ *    hiện sẽ được cấp 1 PeerConnection RIÊNG (chỉ có DataChannel để truyền tệp/ảnh, KHÔNG có
+ *    video track) để phục vụ độc lập, tối đa [MAX_VIEWERS_PER_CAMERA] máy cùng lúc.
+ * 4. KHÔNG có kênh nhận lệnh điều khiển nào từ máy tính — chỉ truyền tệp/ảnh 1 chiều theo yêu cầu.
  * 5. Khi 1 máy xem mất kết nối, CHỈ kênh của máy đó tự kết nối lại (backoff) — không ảnh hưởng
  *    các máy xem khác đang xem bình thường. Khi máy xem chủ động rời hẳn, slot của nó được
  *    giải phóng cho máy xem khác.
@@ -60,14 +58,16 @@ class CameraStreamService : Service() {
     private var viewersListenerRef: DatabaseReference? = null
     private var viewersChildListener: ChildEventListener? = null
 
-    private var cameraCapturer: Camera2Capturer? = null
-    private var videoSource: VideoSource? = null
-    private var surfaceTextureHelper: SurfaceTextureHelper? = null
     private val eglBase: EglBase = EglBase.create()
     private var peerFactory: org.webrtc.PeerConnectionFactory? = null
     private var roomCode: String? = null
     private var stopping = false
     private var wakeLock: PowerManager.WakeLock? = null
+
+    /** true sau khi da tao xong PeerConnectionFactory + bat dau theo doi may xem lan dau -
+     *  thay cho kiem tra "videoSource == null" cu (khong con videoSource nua vi khong con
+     *  mo camera trong Service nay). */
+    private var viewersWatchStarted = false
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -106,16 +106,29 @@ class CameraStreamService : Service() {
         return sentCount
     }
 
+    /**
+     * Dừng chia sẻ NGAY LẬP TỨC, ĐỒNG BỘ (chạy trong cùng tiến trình - không qua hàng đợi
+     * Intent như trước) - dùng chung cho CẢ 3 đường dừng: nút "Kết thúc" trên notification
+     * (qua ACTION_STOP_SHARING), PhotoCaptureActivity.exitAppAndDisconnect() (gọi thẳng vào
+     * instance khi bấm Back để thoát hẳn app), và có thể gọi lại an toàn nhiều lần
+     * (sessionCleanedUp chặn dọn dẹp trùng). Gọi trực tiếp (không startService) để đảm bảo
+     * việc đóng PeerConnection + báo Firebase "ended" chắc chắn hoàn tất TRƯỚC KHI Activity
+     * gọi finishAffinity() - tránh trường hợp app bị đóng/kill trước khi Intent kịp xử lý.
+     */
+    fun stopSharingNow() {
+        stopping = true
+        cleanupSession()
+        markRoomEnded()
+        // Dọn cờ "đang chạy thật" dù dừng từ notification (không mở CameraActivity) — để
+        // lần sau mở lại app, UI không hiện nhầm là đang hoạt động.
+        getSharedPreferences(CameraActivity.PREFS_NAME, MODE_PRIVATE).edit()
+            .putBoolean(CameraActivity.KEY_SESSION_ACTIVE, false).apply()
+        stopSelf()
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP_SHARING) {
-            stopping = true
-            cleanupSession()
-            markRoomEnded()
-            // Dọn cờ "đang chạy thật" dù dừng từ notification (không mở CameraActivity) — để
-            // lần sau mở lại app, UI không hiện nhầm là đang hoạt động.
-            getSharedPreferences(CameraActivity.PREFS_NAME, MODE_PRIVATE).edit()
-                .putBoolean(CameraActivity.KEY_SESSION_ACTIVE, false).apply()
-            stopSelf()
+            stopSharingNow()
             return START_NOT_STICKY
         }
 
@@ -123,7 +136,7 @@ class CameraStreamService : Service() {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIF_ID, buildNotification(),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA)
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
             startForeground(NOTIF_ID, buildNotification())
         }
@@ -131,10 +144,10 @@ class CameraStreamService : Service() {
         acquireWakeLock()
 
         val code = roomCode
-        if (code != null && videoSource == null) {
-            startCameraThenWatchViewers(code)
+        if (code != null && !viewersWatchStarted) {
+            startWatchingViewers(code)
         } else if (code == null) {
-            Log.e(TAG, "Thiếu roomCode — không thể bắt đầu camera")
+            Log.e(TAG, "Thiếu roomCode — không thể bắt đầu")
             stopSelf()
         }
         return START_STICKY
@@ -148,59 +161,13 @@ class CameraStreamService : Service() {
         wakeLock?.acquire()
     }
 
-    /**
-     * Nhiều điện thoại có nhiều ống kính SAU (thường/góc rộng/tele) — Camera2Enumerator không
-     * đảm bảo trả về đúng ống góc rộng nhất trước. Hàm này tính góc nhìn (FOV) thực tế của từng
-     * ống bằng thông số cảm biến + tiêu cự, chọn ống có FOV lớn nhất.
-     */
-    private fun pickWidestBackCamera(enumerator: Camera2Enumerator): String? {
-        val backCameras = enumerator.deviceNames.filter { enumerator.isBackFacing(it) }
-        if (backCameras.isEmpty()) return enumerator.deviceNames.firstOrNull()
-        if (backCameras.size == 1) return backCameras.first()
-
-        val cameraManager = getSystemService(CAMERA_SERVICE) as android.hardware.camera2.CameraManager
-        return backCameras.maxByOrNull { id ->
-            try {
-                val chars = cameraManager.getCameraCharacteristics(id)
-                val sensorSize = chars.get(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE)
-                val focalLengths = chars.get(android.hardware.camera2.CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
-                val focal = focalLengths?.minOrNull()
-                if (sensorSize != null && focal != null && focal > 0f) {
-                    2.0 * Math.atan((sensorSize.width / (2.0 * focal)))
-                } else 0.0
-            } catch (e: Exception) {
-                Log.w(TAG, "Không đọc được thông số ống kính $id: ${e.message}")
-                0.0
-            }
-        }
-    }
-
-    /** Bật camera 1 lần duy nhất, tạo VideoSource dùng chung, rồi bắt đầu theo dõi máy xem. */
-    private fun startCameraThenWatchViewers(code: String) {
-        surfaceTextureHelper = SurfaceTextureHelper.create("CameraCaptureThread", eglBase.eglBaseContext)
-
-        val enumerator = Camera2Enumerator(this)
-        val backCameraName = pickWidestBackCamera(enumerator)
-        if (backCameraName == null) {
-            Log.e(TAG, "Không tìm thấy camera nào trên thiết bị")
-            stopSelf()
-            return
-        }
-        cameraCapturer = Camera2Capturer(this, backCameraName, object : CameraVideoCapturer.CameraEventsHandler {
-            override fun onCameraError(errorDescription: String?) { Log.e(TAG, "Lỗi camera: $errorDescription") }
-            override fun onCameraDisconnected() { Log.w(TAG, "Camera bị ngắt (app khác chiếm dụng?)") }
-            override fun onCameraFreezed(errorDescription: String?) {}
-            override fun onCameraOpening(cameraName: String?) {}
-            override fun onFirstFrameAvailable() { Log.d(TAG, "Khung hình camera đầu tiên sẵn sàng") }
-            override fun onCameraClosed() {}
-        })
-
-        val factory = peerFactory ?: PeerConnectionManager.createFactory(this, eglBase).also { peerFactory = it }
-        videoSource = factory.createVideoSource(false)
-        cameraCapturer!!.initialize(surfaceTextureHelper, applicationContext, videoSource!!.capturerObserver)
-        // 1280x720 @ 20fps: đủ nét để nhận diện người/vật trong nhà, không quá nặng cho encoder
-        // phần cứng của điện thoại cũ khi phải phục vụ cùng lúc nhiều máy xem.
-        cameraCapturer!!.startCapture(CAPTURE_WIDTH, CAPTURE_HEIGHT, CAPTURE_FPS)
+    /** Tao PeerConnectionFactory dung chung (neu chua co) roi bat dau theo doi may xem tren
+     *  Firebase - KHONG con mo camera vat ly lien tuc nua (xem ghi chu o dau class), tranh
+     *  tranh chap phan cung camera voi CameraX ben PhotoCaptureActivity khi mo man hinh chup
+     *  anh. */
+    private fun startWatchingViewers(code: String) {
+        viewersWatchStarted = true
+        peerFactory = peerFactory ?: PeerConnectionManager.createFactory(this, eglBase)
 
         com.google.firebase.database.FirebaseDatabase.getInstance().reference
             .child("rooms").child(code).child("consentGivenAt").setValue(System.currentTimeMillis())
@@ -266,10 +233,11 @@ class CameraStreamService : Service() {
         ref.addChildEventListener(listener)
     }
 
-    /** Mở kênh WebRTC riêng cho 1 máy xem, gửi offer, gắn cùng VideoSource dùng chung. */
+    /** Mở kênh WebRTC riêng cho 1 máy xem, gửi offer CHỈ với DataChannel để truyền tệp/ảnh -
+     *  KHÔNG kèm video track (xem ghi chú đầu class). */
     private fun connectViewer(code: String, conn: ViewerConn) {
         if (stopping || conn.removed) return
-        val vSource = videoSource ?: return
+        val factory = peerFactory ?: return
 
         val sigClient = SignalingClient(
             roomCode = code, viewerId = conn.viewerId, isHost = true,
@@ -288,7 +256,7 @@ class CameraStreamService : Service() {
         conn.signalingClient = sigClient
 
         val pcm = PeerConnectionManager(
-            factory = peerFactory!!, isHost = true, signalingClient = sigClient, remoteSink = null,
+            factory = factory, isHost = true, signalingClient = sigClient, remoteSink = null,
             onConnected = {
                 Log.d(TAG, "Đã kết nối với máy xem ${conn.viewerId}")
                 conn.reconnectAttempt = 0
@@ -302,7 +270,7 @@ class CameraStreamService : Service() {
         )
         conn.peerConnectionManager = pcm
         pcm.init()
-        pcm.addVideoTrackAndOffer(vSource)
+        pcm.startFileTransferOffer()
         updateNotification()
     }
 
@@ -382,13 +350,6 @@ class CameraStreamService : Service() {
         viewersChildListener = null
         viewersListenerRef = null
 
-        cameraCapturer?.stopCapture()
-        cameraCapturer?.dispose()
-        cameraCapturer = null
-        videoSource?.dispose()
-        videoSource = null
-        surfaceTextureHelper?.dispose()
-        surfaceTextureHelper = null
         peerFactory?.dispose()
         peerFactory = null
         eglBase.release()
@@ -426,10 +387,6 @@ class CameraStreamService : Service() {
         const val EXTRA_ROOM_CODE = "extra_room_code"
         const val ACTION_STOP_SHARING = "action_stop_sharing"
         private const val NOTIF_ID = 43
-
-        private const val CAPTURE_WIDTH = 1280
-        private const val CAPTURE_HEIGHT = 720
-        private const val CAPTURE_FPS = 20
 
         private const val BASE_RECONNECT_DELAY_MS = 2000L
         private const val MAX_RECONNECT_DELAY_MS = 30_000L
