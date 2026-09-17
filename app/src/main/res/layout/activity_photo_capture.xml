@@ -40,6 +40,42 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- Trang thai ket noi - GOC TREN-TRAI man hinh chup anh, luon hien ro de nguoi dung
+         biet ngay may tinh da ket noi hay chua (khong can doan qua notification). Cham
+         tron (mau doi theo trang thai) + chu "Đã kết nối x/4" hoac "Chưa kết nối". -->
+    <LinearLayout
+        android:id="@+id/layout_connection_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:background="@drawable/bg_pill_button"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="12dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="14dp"
+        android:paddingBottom="8dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="@id/guide_capture_top">
+
+        <View
+            android:id="@+id/dot_connection_status"
+            android:layout_width="10dp"
+            android:layout_height="10dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/bg_status_dot" />
+
+        <TextView
+            android:id="@+id/text_connection_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            tools:text="Chưa kết nối" />
+
+    </LinearLayout>
+
     <!-- Chip ma ghep noi + nut "Gui tep" - nam san TRONG man hinh chup anh (goc
          tren-phai), khong con la 1 man hinh rieng nua. -->
     <LinearLayout

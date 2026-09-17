@@ -4,6 +4,8 @@
     <string name="pairing_code_chip_format">Mã: %1$s</string>
     <string name="hint_swipe_up_to_send">Vuốt 2 ngón tay lên để gửi sang máy tính</string>
     <string name="btn_send_file">📤 Gửi tệp</string>
+    <string name="connection_status_connected">Đã kết nối %1$d/%2$d</string>
+    <string name="connection_status_disconnected">Chưa kết nối</string>
 
     <string name="notif_channel_name">Sẵn sàng gửi ảnh/tệp</string>
     <string name="notif_title">Sẵn sàng kết nối với máy tính</string>

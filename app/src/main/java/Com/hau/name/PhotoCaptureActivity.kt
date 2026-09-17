@@ -7,6 +7,8 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.view.MotionEvent
 import android.view.View
@@ -70,6 +72,9 @@ class PhotoCaptureActivity : AppCompatActivity() {
     private lateinit var bottomControls: View
     private lateinit var textPairingCodeChip: TextView
     private lateinit var btnSendFile: android.widget.Button
+    private lateinit var layoutConnectionStatus: View
+    private lateinit var dotConnectionStatus: View
+    private lateinit var textConnectionStatus: TextView
 
     private lateinit var layoutPhotoReview: FrameLayout
     private lateinit var imageReviewPhoto: ImageView
@@ -126,6 +131,10 @@ class PhotoCaptureActivity : AppCompatActivity() {
         bottomControls = findViewById(R.id.bottom_controls)
         textPairingCodeChip = findViewById(R.id.text_pairing_code_chip)
         btnSendFile = findViewById(R.id.btn_send_file)
+        layoutConnectionStatus = findViewById(R.id.layout_connection_status)
+        dotConnectionStatus = findViewById(R.id.dot_connection_status)
+        textConnectionStatus = findViewById(R.id.text_connection_status)
+        renderConnectionStatus(0, MAX_VIEWERS_PER_CAMERA)
 
         setupEdgeToEdgeInsets()
 
@@ -169,11 +178,67 @@ class PhotoCaptureActivity : AppCompatActivity() {
             layoutTopControls.updateLayoutParams<ConstraintLayout.LayoutParams> {
                 topMargin = baseTopMargin + bars.top
             }
+            layoutConnectionStatus.updateLayoutParams<ConstraintLayout.LayoutParams> {
+                topMargin = baseTopMargin + bars.top
+            }
             bottomControls.updateLayoutParams<ConstraintLayout.LayoutParams> {
                 bottomMargin = baseBottomMargin + bars.bottom
             }
             insets
         }
+    }
+
+    /**
+     * Cap nhat cham tron + chu o goc tren-trai theo trang thai ket noi hien tai. Mau xanh la
+     * (#4CAF50) khi co it nhat 1 may tinh dang ket noi thanh cong, mau xam (#9E9E9E) khi chua
+     * co may nao - giup nguoi dung biet NGAY co the vuot-de-gui anh duoc hay chua, khong can
+     * doan qua thong bao he thong.
+     */
+    private fun renderConnectionStatus(connectedCount: Int, maxViewers: Int) {
+        val connected = connectedCount > 0
+        val color = if (connected) 0xFF4CAF50.toInt() else 0xFF9E9E9E.toInt()
+        (dotConnectionStatus.background as? android.graphics.drawable.GradientDrawable)?.setColor(color)
+            ?: dotConnectionStatus.background?.setTint(color)
+        textConnectionStatus.text = if (connected) {
+            getString(R.string.connection_status_connected, connectedCount, maxViewers)
+        } else {
+            getString(R.string.connection_status_disconnected)
+        }
+    }
+
+    private val connectionStatusListener = object : CameraStreamService.ConnectionStatusListener {
+        override fun onConnectionStatusChanged(connectedCount: Int, maxViewers: Int) {
+            runOnUiThread { renderConnectionStatus(connectedCount, maxViewers) }
+        }
+    }
+
+    private val statusListenerHandler = Handler(Looper.getMainLooper())
+    /** CameraActivity vua goi startForegroundService() ngay TRUOC KHI mo man hinh nay - Service
+     *  co the chua kip tao xong (instance con null trong choc lat) do he thong xu ly bat dong
+     *  bo. Thu lai vai lan cach nhau ngan de dang ky duoc NGAY KHI service san sang, thay vi bo
+     *  qua han va khien goc tren-trai ket ket qua "Chưa kết nối" mai du service da chay. */
+    private val registerStatusListenerRunnable = object : Runnable {
+        override fun run() {
+            val service = CameraStreamService.instance
+            if (service != null) {
+                service.addConnectionStatusListener(connectionStatusListener)
+            } else {
+                statusListenerHandler.postDelayed(this, 300L)
+            }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Dang ky NGAY khi man hinh hien ra de goc tren-trai luon phan anh dung trang thai -
+        // service co the da chay tu truoc (vd. quay lai man hinh nay tu Recents).
+        statusListenerHandler.post(registerStatusListenerRunnable)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        statusListenerHandler.removeCallbacks(registerStatusListenerRunnable)
+        CameraStreamService.instance?.removeConnectionStatusListener(connectionStatusListener)
     }
 
     private fun startCamera() {

@@ -28,10 +28,23 @@ private const val TAG = "PeerConnectionManager"
 private const val MAX_VIDEO_BITRATE_BPS = 2_000_000
 private const val MIN_VIDEO_BITRATE_BPS = 300_000
 
-// Gui tep/anh qua DataChannel: kich thuoc 1 doan - 16KB la muc an toan, tuong thich rong khap
-// cac trinh duyet/thu vien WebRTC (SCTP over DTLS ly thuyet cho phep lon hon nhung 16KB tranh
-// moi rui ro nghen/rot goi tren nhieu thiet bi/mang khac nhau).
-private const val FILE_CHUNK_SIZE = 16 * 1024
+// Gui tep/anh qua DataChannel: kich thuoc 1 doan - nang tu 16KB len 64KB. Ca 2 dau (dien
+// thoai va app Qrtuxa may tinh) deu la native WebRTC (khong phai trinh duyet), nen khong bi
+// gioi han 16KB cua mot so trinh duyet cu - 64KB van nam rat sau duoi gioi han message SCTP
+// thong thuong (256KB+) nhung giam dang ke so lan goi send()/JNI overhead so voi 16KB, giup
+// truyen anh/tep NHANH HON RO RET voi CUNG mot noi dung goc (KHONG nen/giam do phan giai anh -
+// van gui du 100% byte goc cua anh, chi thay doi cach CHIA NHO de truyen di).
+private const val FILE_CHUNK_SIZE = 64 * 1024
+
+// Kiem soat luong (flow control) khi gui: KHONG bom tat ca cac doan vao kenh lien tuc khong
+// ngung nghi - lam vay se lam hang doi gui noi bo cua SCTP phinh to khong kiem soat (buffered
+// amount tang vot), gay ra dung/giat cuc bo va trong truong hop xau co the vuot gioi han bo dem
+// cua thu vien WebRTC khien kenh bi dong giua chung (gui that bai). Thay vao do: cho gui doan
+// tiep theo khi luong dang cho gui (bufferedAmount) giam xuong duoi muc thap - dung ki thuat
+// nay giup toc do gui bam sat toc do THUC TE cua duong truyen (nhanh nhat co the ma van an
+// toan), giong y het cach video stream tu dieu chinh theo bang thong thay vi gui du lieu tho bao.
+private const val BUFFERED_AMOUNT_HIGH_WATERMARK = 1L * 1024 * 1024 // 1MB: tam dung khi vuot qua
+private const val BUFFERED_AMOUNT_LOW_WATERMARK = 256L * 1024        // 256KB: gui tiep khi da xuong duoi
 private const val DATA_CHANNEL_LABEL = "filetransfer"
 
 /** ICE servers dùng STUN công khai của Google + TURN dự phòng nếu 2 máy khác mạng LAN. */
@@ -75,6 +88,9 @@ class PeerConnectionManager(
     // dien thoai luon la ben CHU DONG gui tep/anh.
     private var dataChannel: DataChannel? = null
     private var onDataChannelOpen: () -> Unit = {}
+    /** Dung de sendFile() cho (Object.wait) toi khi onBufferedAmountChange() bao buffer da
+     *  giam xuong duoi muc thap - xem BUFFERED_AMOUNT_*_WATERMARK o tren. */
+    private val bufferedAmountLock = Object()
 
     /** Track video nhận được từ phía bên kia (chỉ có ý nghĩa khi [isHost] = false). */
     fun remoteVideoTrackOrNull(): VideoTrack? = remoteVideoTrack
@@ -169,13 +185,22 @@ class PeerConnectionManager(
         if (isHost) {
             val init = DataChannel.Init().apply { ordered = true }
             dataChannel = peerConnection?.createDataChannel(DATA_CHANNEL_LABEL, init)
+            // Bao thuc dong bo (Object.notify) moi khi bufferedAmount() giam xuong - dung de
+            // sendFile() cho HIEU QUA (khong busy-poll ton CPU) thay vi Thread.sleep() lap lai.
             dataChannel?.registerObserver(object : DataChannel.Observer {
                 override fun onStateChange() {
                     Log.d(TAG, "DataChannel state: ${dataChannel?.state()}")
                     if (dataChannel?.state() == DataChannel.State.OPEN) onDataChannelOpen()
                 }
                 override fun onMessage(buffer: DataChannel.Buffer) {}
-                override fun onBufferedAmountChange(amount: Long) {}
+                override fun onBufferedAmountChange(previousAmount: Long) {
+                    // Luu y: tham so la luong TRUOC do (previousAmount), khong phai luong hien
+                    // tai - phai tu doc lai dataChannel?.bufferedAmount() de biet luong THUC TE
+                    // bay gio con lai bao nhieu.
+                    if ((dataChannel?.bufferedAmount() ?: 0L) <= BUFFERED_AMOUNT_LOW_WATERMARK) {
+                        synchronized(bufferedAmountLock) { bufferedAmountLock.notifyAll() }
+                    }
+                }
             })
         }
 
@@ -307,6 +332,21 @@ class PeerConnectionManager(
                 } catch (e: Exception) { /* ket noi da chet han, khong gui duoc nua cung khong sao */ }
                 onResult(false)
                 return
+            }
+            // Kiem soat luong: neu kenh dang con qua nhieu du lieu CHUA GUI DI THUC SU (buffer
+            // noi bo cao hon muc cao), TAM DUNG cho toi khi no xuong duoi muc thap roi moi gui
+            // tiep - tranh phinh bo dem gay dung/rot ket noi, giu toc do gui bam sat bang thong
+            // THUC TE (nhanh nhat co the an toan), tuong tu cach mot luong video tu dieu tiet.
+            if (channel.bufferedAmount() > BUFFERED_AMOUNT_HIGH_WATERMARK) {
+                synchronized(bufferedAmountLock) {
+                    while (channel.bufferedAmount() > BUFFERED_AMOUNT_HIGH_WATERMARK &&
+                        pc.connectionState() == PeerConnection.PeerConnectionState.CONNECTED &&
+                        channel.state() == DataChannel.State.OPEN
+                    ) {
+                        bufferedAmountLock.wait(200L)
+                    }
+                }
+                continue
             }
             val end = minOf(offset + FILE_CHUNK_SIZE, fileBytes.size)
             val chunk = fileBytes.copyOfRange(offset, end)

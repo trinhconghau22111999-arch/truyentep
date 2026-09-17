@@ -54,6 +54,33 @@ private class ViewerConn(val viewerId: String) {
  */
 class CameraStreamService : Service() {
 
+    /** Lang nghe trang thai ket noi (so may xem dang ket noi thanh cong / toi da) de UI
+     *  (PhotoCaptureActivity) hien ro o goc tren-trai, cap nhat REAL-TIME moi khi co thay
+     *  doi (may xem moi ket noi xong, mat ket noi, roi han...) - khong can polling. */
+    interface ConnectionStatusListener {
+        fun onConnectionStatusChanged(connectedCount: Int, maxViewers: Int)
+    }
+    private val statusListeners = java.util.concurrent.CopyOnWriteArrayList<ConnectionStatusListener>()
+
+    /** Dang ky lang nghe - goi lai NGAY LAP TUC voi trang thai hien tai khi vua dang ky,
+     *  de UI khong bi "trang" cho toi khi co thay doi tiep theo. */
+    fun addConnectionStatusListener(listener: ConnectionStatusListener) {
+        statusListeners.add(listener)
+        listener.onConnectionStatusChanged(connectedViewerCount(), MAX_VIEWERS_PER_CAMERA)
+    }
+
+    fun removeConnectionStatusListener(listener: ConnectionStatusListener) {
+        statusListeners.remove(listener)
+    }
+
+    private fun connectedViewerCount(): Int =
+        viewerConns.values.count { it.peerConnectionManager != null && it.reconnectAttempt == 0 }
+
+    private fun notifyStatusListeners() {
+        val count = connectedViewerCount()
+        handler.post { statusListeners.forEach { it.onConnectionStatusChanged(count, MAX_VIEWERS_PER_CAMERA) } }
+    }
+
     private val viewerConns = LinkedHashMap<String, ViewerConn>()
     private var viewersListenerRef: DatabaseReference? = null
     private var viewersChildListener: ChildEventListener? = null
@@ -216,6 +243,7 @@ class CameraStreamService : Service() {
                 conn.peerConnectionManager?.release()
                 conn.signalingClient?.release()
                 Log.d(TAG, "Máy xem $viewerId đã rời hẳn, giải phóng slot")
+                updateNotification()
             }
             override fun onChildChanged(snapshot: DataSnapshot, prevKey: String?) {}
             override fun onChildMoved(snapshot: DataSnapshot, prevKey: String?) {}
@@ -289,6 +317,7 @@ class CameraStreamService : Service() {
         )
         conn.reconnectAttempt++
         conn.reconnectRunnable?.let { handler.postDelayed(it, delay) }
+        updateNotification()
     }
 
     /** Chỉ đánh dấu phòng đã đóng — mã cố định KHÔNG bị xoá, giữ lại dùng cho lần sau.
@@ -329,6 +358,7 @@ class CameraStreamService : Service() {
     private fun updateNotification() {
         val manager = getSystemService(NotificationManager::class.java)
         manager.notify(NOTIF_ID, buildNotification())
+        notifyStatusListeners()
     }
 
     /** Chặn dọn dẹp 2 lần (vd. onTaskRemoved gọi cleanupSession() rồi tự stopSelf() sẽ kích
@@ -355,6 +385,7 @@ class CameraStreamService : Service() {
         eglBase.release()
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
+        notifyStatusListeners()
     }
 
     /**

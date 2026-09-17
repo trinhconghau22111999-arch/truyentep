@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cham tron nho bao trang thai ket noi (goc tren-trai man hinh chup anh) - mau duoc
+     doi bang code (setColorFilter) tuy trang thai: xanh la = da co may tinh ket noi,
+     xam = chua co may tinh nao ket noi. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="#9E9E9E" />
+</shape>
