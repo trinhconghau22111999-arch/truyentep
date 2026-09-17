@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">QR Cam</string>
+    <string name="app_name">Chụp ảnh &amp; gửi file</string>
 
     <string name="pairing_code_chip_format">Mã: %1$s</string>
     <string name="hint_swipe_up_to_send">Vuốt 2 ngón tay lên để gửi sang máy tính</string>
