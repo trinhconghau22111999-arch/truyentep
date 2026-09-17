@@ -25,6 +25,11 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updateLayoutParams
+import androidx.constraintlayout.widget.ConstraintLayout
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -54,11 +59,14 @@ class PhotoCaptureActivity : AppCompatActivity() {
 
     private var roomCode: String? = null
 
+    private lateinit var rootLayout: ConstraintLayout
     private lateinit var previewView: PreviewView
     private lateinit var btnCapture: View
-    private lateinit var btnFlash: TextView
+    private lateinit var btnFlash: ImageView
     private lateinit var btnViewLastPhoto: ImageView
     private lateinit var btnExit: TextView
+    private lateinit var layoutTopControls: View
+    private lateinit var bottomControls: View
     private lateinit var textPairingCodeChip: TextView
     private lateinit var btnSendFile: android.widget.Button
 
@@ -97,16 +105,29 @@ class PhotoCaptureActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Man hinh chup anh phong to CHIEM TRON man hinh (ke ca vung sau status
+        // bar) - vo hieu hoa viec he thong tu chua noi dung lai, roi tu tay cong
+        // them padding = chieu cao status/nav bar cho CAC NUT dieu khien phia tren
+        // (setupEdgeToEdgeInsets) de chung khong bi che boi dong ho/pin, con khung
+        // camera thi van tran het toan bo man hinh.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+
         setContentView(R.layout.activity_photo_capture)
         roomCode = intent.getStringExtra(EXTRA_ROOM_CODE)
 
+        rootLayout = findViewById(R.id.root_photo_capture)
         previewView = findViewById(R.id.camera_preview)
         btnCapture = findViewById(R.id.btn_capture)
         btnFlash = findViewById(R.id.btn_toggle_flash)
         btnViewLastPhoto = findViewById(R.id.btn_view_last_photo)
         btnExit = findViewById(R.id.btn_exit_capture)
+        layoutTopControls = findViewById(R.id.layout_top_controls)
+        bottomControls = findViewById(R.id.bottom_controls)
         textPairingCodeChip = findViewById(R.id.text_pairing_code_chip)
         btnSendFile = findViewById(R.id.btn_send_file)
+
+        setupEdgeToEdgeInsets()
 
         layoutPhotoReview = findViewById(R.id.layout_photo_review)
         imageReviewPhoto = findViewById(R.id.image_review_photo)
@@ -138,6 +159,28 @@ class PhotoCaptureActivity : AppCompatActivity() {
         }
     }
 
+    /** Cong them padding/margin = chieu cao status bar (tren) va navigation bar (duoi) cho
+     *  hang nut phia tren (nut thoat, chip ma, nut Gui tep) va hang nut phia duoi (chup/flash/
+     *  xem anh) - de cac nut nay khong bi status bar (dong ho, pin...) hay navigation bar de
+     *  len, trong khi khung camera (camera_preview) van tran het toan bo man hinh phia sau. */
+    private fun setupEdgeToEdgeInsets() {
+        val baseTopMargin = (16 * resources.displayMetrics.density).toInt()
+        val baseBottomMargin = (16 * resources.displayMetrics.density).toInt()
+        ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { _, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            btnExit.updateLayoutParams<ConstraintLayout.LayoutParams> {
+                topMargin = baseTopMargin + bars.top
+            }
+            layoutTopControls.updateLayoutParams<ConstraintLayout.LayoutParams> {
+                topMargin = baseTopMargin + bars.top
+            }
+            bottomControls.updateLayoutParams<ConstraintLayout.LayoutParams> {
+                bottomMargin = baseBottomMargin + bars.bottom
+            }
+            insets
+        }
+    }
+
     private fun startCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener({
@@ -166,7 +209,9 @@ class PhotoCaptureActivity : AppCompatActivity() {
 
     /** Bat/tat den flash NGAY LAP TUC (giong den pin, bang CameraControl.enableTorch) - trước
      *  đây chỉ đổi ImageCapture.flashMode nên đèn chỉ loé lên đúng lúc bấm chụp, không sáng
-     *  liên tục khi bấm nút này, khiến người dùng tưởng nút không hoạt động. */
+     *  liên tục khi bấm nút này, khiến người dùng tưởng nút không hoạt động.
+     *  Hieu ung bat/tat ro rang tren nut: BAT -> icon tia set mau vang; TAT -> icon tia set
+     *  co GACH CHEO qua, mau trang mo. */
     private fun toggleFlash() {
         flashOn = !flashOn
         imageCapture?.flashMode = if (flashOn) ImageCapture.FLASH_MODE_ON else ImageCapture.FLASH_MODE_OFF
@@ -174,13 +219,24 @@ class PhotoCaptureActivity : AppCompatActivity() {
         if (torchCamera == null || torchCamera.cameraInfo.hasFlashUnit().not()) {
             flashOn = false
             imageCapture?.flashMode = ImageCapture.FLASH_MODE_OFF
-            btnFlash.setTextColor(0xFFFFFFFF.toInt())
+            updateFlashButtonIcon()
             Toast.makeText(this, "Máy này không có đèn flash", Toast.LENGTH_SHORT).show()
             return
         }
         torchCamera.cameraControl.enableTorch(flashOn)
-        // Doi mau chu de bao hieu ro trang thai bat/tat (vang = dang bat)
-        btnFlash.setTextColor(if (flashOn) 0xFFFFD54F.toInt() else 0xFFFFFFFF.toInt())
+        updateFlashButtonIcon()
+    }
+
+    /** Cap nhat icon nut flash theo dung [flashOn]: BAT -> ic_flash_on mau vang;
+     *  TAT -> ic_flash_off (tia set + gach cheo) mau trang mo. */
+    private fun updateFlashButtonIcon() {
+        if (flashOn) {
+            btnFlash.setImageResource(R.drawable.ic_flash_on)
+            btnFlash.setColorFilter(0xFFFFD54F.toInt())
+        } else {
+            btnFlash.setImageResource(R.drawable.ic_flash_off)
+            btnFlash.clearColorFilter()
+        }
     }
 
     private fun takePhoto() {

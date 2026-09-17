@@ -1,26 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.constraintlayout.widget.ConstraintLayout
+    android:id="@+id/root_photo_capture"
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000">
+    android:background="#000000"
+    android:fitsSystemWindows="false">
 
-    <!-- Man hinh chup anh luon nam o doan giua man hinh (khong tran vien) -->
+    <!-- Man hinh chup anh gio phong to CHIEM TRON MAN HINH (tran vien tren-duoi),
+         khong con 2 vien den nhu truoc nua - guide dat dung 0%/100% de tan dung het
+         chieu cao vung noi dung cua Activity. -->
     <androidx.constraintlayout.widget.Guideline
         android:id="@+id/guide_capture_top"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        app:layout_constraintGuide_percent="0.12" />
+        app:layout_constraintGuide_percent="0" />
 
     <androidx.constraintlayout.widget.Guideline
         android:id="@+id/guide_capture_bottom"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        app:layout_constraintGuide_percent="0.88" />
+        app:layout_constraintGuide_percent="1" />
 
     <!-- Khung camera - gio gioi han trong doan giua man hinh, khong con phu kin toan man -->
     <androidx.camera.view.PreviewView
@@ -130,7 +134,7 @@
             android:contentDescription="Chụp ảnh"
             android:focusable="true" />
 
-        <TextView
+        <ImageView
             android:id="@+id/btn_toggle_flash"
             android:layout_width="44dp"
             android:layout_height="44dp"
@@ -139,10 +143,8 @@
             android:clickable="true"
             android:contentDescription="Bật/tắt đèn flash"
             android:focusable="true"
-            android:gravity="center"
-            android:text="⚡"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp" />
+            android:padding="10dp"
+            android:src="@drawable/ic_flash_off" />
 
     </LinearLayout>
 
