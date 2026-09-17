@@ -59,6 +59,8 @@ class PhotoCaptureActivity : AppCompatActivity() {
     private lateinit var btnFlash: TextView
     private lateinit var btnViewLastPhoto: ImageView
     private lateinit var btnExit: TextView
+    private lateinit var textPairingCodeChip: TextView
+    private lateinit var btnSendFile: android.widget.Button
 
     private lateinit var layoutPhotoReview: FrameLayout
     private lateinit var imageReviewPhoto: ImageView
@@ -103,15 +105,28 @@ class PhotoCaptureActivity : AppCompatActivity() {
         btnFlash = findViewById(R.id.btn_toggle_flash)
         btnViewLastPhoto = findViewById(R.id.btn_view_last_photo)
         btnExit = findViewById(R.id.btn_exit_capture)
+        textPairingCodeChip = findViewById(R.id.text_pairing_code_chip)
+        btnSendFile = findViewById(R.id.btn_send_file)
 
         layoutPhotoReview = findViewById(R.id.layout_photo_review)
         imageReviewPhoto = findViewById(R.id.image_review_photo)
         textReviewHint = findViewById(R.id.text_review_hint)
 
-        btnExit.setOnClickListener { finish() }
+        textPairingCodeChip.text = getString(R.string.pairing_code_chip_format, roomCode ?: "------")
+
+        // Man hinh nay gio la man hinh chinh duy nhat cua app (thay cho CameraActivity
+        // truoc day) - bam thoat/Back dua app xuong nen giong Home, KHONG dong han,
+        // de CameraStreamService (dang gui/cho gui) van tiep tuc chay nen nhu thiet ke
+        // cu, thay vi finish() lam mat het session dang hien.
+        btnExit.setOnClickListener { moveTaskToBack(true) }
         btnCapture.setOnClickListener { takePhoto() }
         btnFlash.setOnClickListener { toggleFlash() }
         btnViewLastPhoto.setOnClickListener { openLastPhotoViewer() }
+        btnSendFile.setOnClickListener {
+            startActivity(Intent(this, SendFileActivity::class.java).apply {
+                putExtra(SendFileActivity.EXTRA_ROOM_CODE, roomCode)
+            })
+        }
         setupSwipeUpToSend()
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
@@ -224,13 +239,15 @@ class PhotoCaptureActivity : AppCompatActivity() {
     }
 
     /** Bam Back khi dang xem lai anh -> chi dong man xem lai (khong gui), khong thoat man
-     *  hinh chup anh. Bam Back luc khac van thoat man chup nhu binh thuong. */
+     *  hinh chup anh. Bam Back luc khac se dua app xuong nen (giong nut thoat @btnExit)
+     *  chu khong dong han Activity - man hinh nay gio la man hinh chinh duy nhat cua app
+     *  nen phai giu nguyen tac "Back = xuong nen, khong tat" nhu thiet ke cu. */
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (layoutPhotoReview.visibility == View.VISIBLE) {
             closePhotoReview()
         } else {
-            super.onBackPressed()
+            moveTaskToBack(true)
         }
     }
 
