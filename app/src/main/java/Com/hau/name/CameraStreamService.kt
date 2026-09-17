@@ -363,7 +363,14 @@ class CameraStreamService : Service() {
         manager.notify(NOTIF_ID, buildNotification())
     }
 
+    /** Chặn dọn dẹp 2 lần (vd. onTaskRemoved gọi cleanupSession() rồi tự stopSelf() sẽ kích
+     *  hoạt tiếp onDestroy() gọi cleanupSession() lần nữa) — tránh giải phóng trùng eglBase/
+     *  wakeLock có thể gây crash. */
+    private var sessionCleanedUp = false
+
     private fun cleanupSession() {
+        if (sessionCleanedUp) return
+        sessionCleanedUp = true
         viewerConns.values.forEach { conn ->
             conn.removed = true
             conn.reconnectRunnable?.let { handler.removeCallbacks(it) }
@@ -387,6 +394,25 @@ class CameraStreamService : Service() {
         eglBase.release()
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
+    }
+
+    /**
+     * Gọi khi người dùng THOÁT HẲN app khỏi danh sách Recents (vuốt app ra khỏi đa nhiệm) —
+     * KHÁC với bấm nút Back (chỉ đưa app xuống nền, webcam vẫn chạy tiếp, xem
+     * CameraActivity.onBackPressed). Theo yêu cầu "chỉ bật 1 lần, thoát hẳn app thì tự tắt,
+     * mở lại app thì tự bật lại": khi task bị dọn hẳn, tắt luôn webcam + dọn phòng trên Firebase,
+     * nhưng KHÔNG xoá mã cố định và KHÔNG xoá cờ "đã từng đồng ý" (CameraActivity.KEY_CONSENT_GIVEN)
+     * - nhờ vậy lần sau mở lại app sẽ tự động bật thẳng webcam mà không hiện lại màn giải thích.
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        stopping = true
+        cleanupSession()
+        markRoomEnded()
+        getSharedPreferences(CameraActivity.PREFS_NAME, MODE_PRIVATE).edit()
+            .putBoolean(CameraActivity.KEY_SESSION_ACTIVE, false).apply()
+        instance = null
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {

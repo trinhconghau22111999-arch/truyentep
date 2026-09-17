@@ -8,6 +8,7 @@
 
     <string name="pairing_code_label">Mã kết nối của máy này</string>
     <string name="pairing_code_hint">Nhập mã này vào QR Cam trên máy tính (Qrtuxa)</string>
+    <string name="hint_swipe_up_to_send">Vuốt 2 ngón tay lên để gửi sang máy tính</string>
     <string name="btn_end_session">Dừng</string>
     <string name="btn_take_photo">📷 Chụp ảnh</string>
     <string name="btn_send_file">📤 Gửi tệp</string>

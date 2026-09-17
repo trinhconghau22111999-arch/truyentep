@@ -69,12 +69,45 @@ class CameraActivity : AppCompatActivity() {
             })
         }
 
-        // Nếu service camera đang chạy sẵn (vd. quay lại màn hình sau khi thoát app),
-        // hiển thị lại mã đang hoạt động thay vì bắt bấm lại từ đầu.
-        restoreActiveSessionIfAny()
-
         findViewById<Button>(R.id.btn_battery_fix).setOnClickListener {
             BatteryOptimizationHelper.requestIgnore(this)
+        }
+
+        setupInitialScreen()
+    }
+
+    /**
+     * Chỉ lần MỞ APP ĐẦU TIÊN (chưa từng đồng ý) mới hiện màn hình tick đồng ý + giải thích.
+     * Từ lần thứ 2 trở đi (KEY_CONSENT_GIVEN = true), ẩn hẳn phần giải thích/tick đồng ý và
+     * TỰ ĐỘNG bật lại webcam ngay khi vào app — không cần bấm gì cả, giống hệt màn hình đang
+     * hoạt động (mã ghép nối) mà không phải xem lại lời giải thích mỗi lần.
+     */
+    private fun setupInitialScreen() {
+        val consentGiven = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+            .getBoolean(KEY_CONSENT_GIVEN, false)
+
+        if (!consentGiven) {
+            // Lần đầu tiên: giữ nguyên luồng cũ - phải tick đồng ý rồi mới bấm được nút bắt đầu.
+            return
+        }
+
+        // Từ lần thứ 2 trở đi: ẩn vĩnh viễn phần tiêu đề/giải thích/tick đồng ý,
+        // nút bắt đầu chỉ còn dùng để "bật lại" thủ công nếu người dùng lỡ bấm "Kết thúc phiên".
+        findViewById<TextView>(R.id.text_title).visibility = android.view.View.GONE
+        findViewById<TextView>(R.id.text_body).visibility = android.view.View.GONE
+        checkboxConsent.visibility = android.view.View.GONE
+        btnStart.text = getString(R.string.btn_generate_code)
+        btnStart.isEnabled = true
+
+        // Nếu webcam đang thực sự chạy (chưa bị "Kết thúc phiên" hay hệ thống dọn hẳn app),
+        // hiện lại mã ghép nối thay vì bắt bấm lại từ đầu.
+        restoreActiveSessionIfAny()
+
+        // Trường hợp còn lại (chưa có phiên đang chạy) - đây chính là lúc app được mở lại sau
+        // khi trước đó đã bị thoát hẳn (CameraStreamService.onTaskRemoved đã tự tắt webcam) -
+        // tự động bật lại webcam ngay, không cần người dùng thao tác gì thêm.
+        if (layoutPairingCode.visibility != android.view.View.VISIBLE) {
+            requestCameraPermissionThenStart()
         }
     }
 
@@ -109,6 +142,7 @@ class CameraActivity : AppCompatActivity() {
         checkboxConsent.isChecked = true
         textPairingCode.text = fixedCode
         layoutPairingCode.visibility = android.view.View.VISIBLE
+        btnStart.visibility = android.view.View.GONE
     }
 
     private fun requestCameraPermissionThenStart() {
@@ -171,7 +205,13 @@ class CameraActivity : AppCompatActivity() {
 
         textPairingCode.text = code
         layoutPairingCode.visibility = android.view.View.VISIBLE
-        prefs.edit().putBoolean(KEY_SESSION_ACTIVE, true).apply()
+        btnStart.visibility = android.view.View.GONE
+        // Đánh dấu đã từng đồng ý - từ lần mở app sau sẽ không hiện lại màn giải thích nữa,
+        // chỉ tự động bật thẳng webcam.
+        prefs.edit()
+            .putBoolean(KEY_SESSION_ACTIVE, true)
+            .putBoolean(KEY_CONSENT_GIVEN, true)
+            .apply()
 
         BatteryOptimizationHelper.requestIgnore(this)
     }
@@ -186,6 +226,9 @@ class CameraActivity : AppCompatActivity() {
         getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit().putBoolean(KEY_SESSION_ACTIVE, false).apply()
         layoutPairingCode.visibility = android.view.View.GONE
         checkboxConsent.isChecked = false
+        // Đã từng đồng ý rồi thì nút này chỉ còn là nút "bật lại" đơn giản, không cần tick lại.
+        btnStart.isEnabled = true
+        btnStart.visibility = android.view.View.VISIBLE
     }
 
     companion object {
@@ -196,5 +239,9 @@ class CameraActivity : AppCompatActivity() {
         /** true khi phiên camera THỰC SỰ đang chạy (không chỉ là "đã từng có mã") — dùng để
          *  UI không hiện nhầm "đang hoạt động" sau khi đã bấm Kết thúc rồi mở lại app. */
         const val KEY_SESSION_ACTIVE = "session_active"
+        /** true ngay sau lần đầu tiên người dùng tick đồng ý + bấm "Bắt đầu làm Webcam".
+         *  Từ đó về sau, KHÔNG hiện lại màn giải thích/tick đồng ý nữa - mỗi lần mở app sẽ
+         *  tự động bật thẳng webcam (xem [setupInitialScreen]). */
+        const val KEY_CONSENT_GIVEN = "consent_given"
     }
 }

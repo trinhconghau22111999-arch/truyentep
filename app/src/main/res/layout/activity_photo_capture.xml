@@ -83,4 +83,57 @@
 
     </LinearLayout>
 
+    <!-- Man hinh xem lai anh vua chup (hien ngay sau khi chup, phu kin man hinh).
+         X goc tren-phai de dong (khong gui). Vuot 2 ngon tay tu duoi len tren anh nay
+         se gui anh sang may tinh - xem PhotoCaptureActivity cho logic cu the. -->
+    <FrameLayout
+        android:id="@+id/layout_photo_review"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#000000"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <ImageView
+            android:id="@+id/image_review_photo"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="Ảnh vừa chụp"
+            android:scaleType="fitCenter" />
+
+        <TextView
+            android:id="@+id/text_review_hint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="40dp"
+            android:background="@drawable/bg_round_button"
+            android:paddingStart="16dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="8dp"
+            android:text="@string/hint_swipe_up_to_send"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/btn_close_review"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_gravity="top|end"
+            android:layout_margin="16dp"
+            android:background="@drawable/bg_round_button"
+            android:clickable="true"
+            android:contentDescription="Đóng, không gửi"
+            android:focusable="true"
+            android:gravity="center"
+            android:text="✕"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp" />
+
+    </FrameLayout>
+
 </androidx.constraintlayout.widget.ConstraintLayout>
