@@ -26,35 +26,22 @@
         android:orientation="horizontal"
         app:layout_constraintGuide_percent="1" />
 
-    <!-- Khung camera - gio gioi han trong doan giua man hinh, khong con phu kin toan man -->
+    <!-- Khung camera - gio gioi han trong doan giua man hinh, khong con phu kin toan man.
+         scaleType="fitCenter" (thay vi mac dinh fillCenter) de HIEN DUNG NGUYEN KHUNG HINH,
+         KHONG zoom/crop mat canh - neu ti le khung hinh camera hep hon man hinh thi tu dong
+         chua 2 vien den (letterbox) o HAI BEN TRAI/PHAI thay vi phong to cat hinh. -->
     <androidx.camera.view.PreviewView
         android:id="@+id/camera_preview"
         android:layout_width="match_parent"
         android:layout_height="0dp"
+        app:scaleType="fitCenter"
         app:layout_constraintTop_toTopOf="@id/guide_capture_top"
         app:layout_constraintBottom_toBottomOf="@id/guide_capture_bottom"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- Nut thoat che do chup - goc tren-trai cua doan giua -->
-    <TextView
-        android:id="@+id/btn_exit_capture"
-        android:layout_width="44dp"
-        android:layout_height="44dp"
-        android:layout_margin="16dp"
-        android:background="@drawable/bg_round_button"
-        android:clickable="true"
-        android:contentDescription="Thoát"
-        android:focusable="true"
-        android:gravity="center"
-        android:text="✕"
-        android:textColor="#FFFFFF"
-        android:textSize="18sp"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="@id/guide_capture_top" />
-
     <!-- Chip ma ghep noi + nut "Gui tep" - nam san TRONG man hinh chup anh (goc
-         tren-phai, doi dien nut thoat), khong con la 1 man hinh rieng nua. -->
+         tren-phai), khong con la 1 man hinh rieng nua. -->
     <LinearLayout
         android:id="@+id/layout_top_controls"
         android:layout_width="wrap_content"
@@ -100,31 +87,21 @@
 
     </LinearLayout>
 
-    <!-- Hang nut duoi cung: xem anh vua chup (trai, an mac dinh) - nut chup (giua) - flash (phai) -->
-    <LinearLayout
+    <!-- Hang nut duoi cung - doi tu LinearLayout sang ConstraintLayout de nut chup LUON
+         NAM CHINH GIUA man hinh (khong bi lech khi nut xem-anh-vua-chup dang an), va nut
+         flash LUON nam gan CANH PHAI (ghim theo canh man hinh, khong dinh sat nut chup) -
+         giong bo cuc quen thuoc cua cac app camera: xem-anh-vua-chup (trai) - chup (giua) -
+         flash (phai), on dinh du dang o trang thai nao. -->
+    <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/bottom_controls"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginBottom="16dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
         app:layout_constraintBottom_toBottomOf="@id/guide_capture_bottom"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
 
-        <!-- CHI hien sau khi da chup it nhat 1 tam trong phien nay -->
-        <ImageView
-            android:id="@+id/btn_view_last_photo"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_marginEnd="28dp"
-            android:background="@drawable/bg_round_button"
-            android:clickable="true"
-            android:contentDescription="Xem ảnh vừa chụp"
-            android:focusable="true"
-            android:scaleType="centerCrop"
-            android:visibility="gone" />
-
+        <!-- Nut chup - CHINH GIUA man hinh theo chieu ngang, khong phu thuoc cac nut khac -->
         <View
             android:id="@+id/btn_capture"
             android:layout_width="72dp"
@@ -132,21 +109,45 @@
             android:background="@drawable/bg_capture_button"
             android:clickable="true"
             android:contentDescription="Chụp ảnh"
-            android:focusable="true" />
+            android:focusable="true"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent" />
 
+        <!-- CHI hien sau khi da chup it nhat 1 tam trong phien nay - ghim gan canh trai -->
+        <ImageView
+            android:id="@+id/btn_view_last_photo"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="24dp"
+            android:background="@drawable/bg_round_button"
+            android:clickable="true"
+            android:contentDescription="Xem ảnh vừa chụp"
+            android:focusable="true"
+            android:scaleType="centerCrop"
+            android:visibility="gone"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="@id/btn_capture"
+            app:layout_constraintBottom_toBottomOf="@id/btn_capture" />
+
+        <!-- Nut flash - ghim GAN CANH PHAI man hinh, khong dinh sat nut chup -->
         <ImageView
             android:id="@+id/btn_toggle_flash"
             android:layout_width="44dp"
             android:layout_height="44dp"
-            android:layout_marginStart="28dp"
+            android:layout_marginEnd="24dp"
             android:background="@drawable/bg_round_button"
             android:clickable="true"
             android:contentDescription="Bật/tắt đèn flash"
             android:focusable="true"
             android:padding="10dp"
-            android:src="@drawable/ic_flash_off" />
+            android:src="@drawable/ic_flash_off"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="@id/btn_capture"
+            app:layout_constraintBottom_toBottomOf="@id/btn_capture" />
 
-    </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
 
     <!-- Man hinh xem lai anh vua chup (hien ngay sau khi chup), cung nam o doan giua
          man hinh giong khung ngam. Khong con nut X - cham 1 lan vao anh (hoac bam Back)

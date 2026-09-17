@@ -41,8 +41,10 @@ import java.util.Locale
  * - Nut chup o giua-duoi (vien tron xam day bong)
  * - Nut xem anh vua chup (ben trai nut chup) - CHI hien sau khi chup it
  *   nhat 1 tam trong phien nay, mac dinh an
- * - Nut bat/tat flash (ben phai nut chup)
- * - Nut thoat (goc tren-trai)
+ * - Nut bat/tat flash (gan canh phai man hinh)
+ * - KHONG con nut thoat rieng (goc tren-trai) - bam Back (nut he thong) se THOAT HAN
+ *   app va NGAT KET NOI luon (xem onBackPressed / exitAppAndDisconnect), thay vi chi
+ *   dua app xuong nen nhu thiet ke cu.
  * - Man hinh (khung ngam + man xem lai) luon nam o doan giua man hinh, khong con
  *   tran vien nhu truoc.
  * - Khi chup: CHI luu anh xuong may (MediaStore, thu muc Pictures/QrTruyenTep) -
@@ -64,7 +66,6 @@ class PhotoCaptureActivity : AppCompatActivity() {
     private lateinit var btnCapture: View
     private lateinit var btnFlash: ImageView
     private lateinit var btnViewLastPhoto: ImageView
-    private lateinit var btnExit: TextView
     private lateinit var layoutTopControls: View
     private lateinit var bottomControls: View
     private lateinit var textPairingCodeChip: TextView
@@ -121,7 +122,6 @@ class PhotoCaptureActivity : AppCompatActivity() {
         btnCapture = findViewById(R.id.btn_capture)
         btnFlash = findViewById(R.id.btn_toggle_flash)
         btnViewLastPhoto = findViewById(R.id.btn_view_last_photo)
-        btnExit = findViewById(R.id.btn_exit_capture)
         layoutTopControls = findViewById(R.id.layout_top_controls)
         bottomControls = findViewById(R.id.bottom_controls)
         textPairingCodeChip = findViewById(R.id.text_pairing_code_chip)
@@ -136,10 +136,8 @@ class PhotoCaptureActivity : AppCompatActivity() {
         textPairingCodeChip.text = getString(R.string.pairing_code_chip_format, roomCode ?: "------")
 
         // Man hinh nay gio la man hinh chinh duy nhat cua app (thay cho CameraActivity
-        // truoc day) - bam thoat/Back dua app xuong nen giong Home, KHONG dong han,
-        // de CameraStreamService (dang gui/cho gui) van tiep tuc chay nen nhu thiet ke
-        // cu, thay vi finish() lam mat het session dang hien.
-        btnExit.setOnClickListener { moveTaskToBack(true) }
+        // truoc day). KHONG con nut thoat rieng - bam Back (nut he thong) se thoat han
+        // + ngat ket noi (xem onBackPressed / exitAppAndDisconnect).
         btnCapture.setOnClickListener { takePhoto() }
         btnFlash.setOnClickListener { toggleFlash() }
         btnViewLastPhoto.setOnClickListener { openLastPhotoViewer() }
@@ -160,17 +158,14 @@ class PhotoCaptureActivity : AppCompatActivity() {
     }
 
     /** Cong them padding/margin = chieu cao status bar (tren) va navigation bar (duoi) cho
-     *  hang nut phia tren (nut thoat, chip ma, nut Gui tep) va hang nut phia duoi (chup/flash/
-     *  xem anh) - de cac nut nay khong bi status bar (dong ho, pin...) hay navigation bar de
-     *  len, trong khi khung camera (camera_preview) van tran het toan bo man hinh phia sau. */
+     *  hang nut phia tren (chip ma, nut Gui tep) va hang nut phia duoi (chup/flash/xem anh) -
+     *  de cac nut nay khong bi status bar (dong ho, pin...) hay navigation bar de len, trong
+     *  khi khung camera (camera_preview) van tran het toan bo man hinh phia sau. */
     private fun setupEdgeToEdgeInsets() {
         val baseTopMargin = (16 * resources.displayMetrics.density).toInt()
         val baseBottomMargin = (16 * resources.displayMetrics.density).toInt()
         ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { _, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            btnExit.updateLayoutParams<ConstraintLayout.LayoutParams> {
-                topMargin = baseTopMargin + bars.top
-            }
             layoutTopControls.updateLayoutParams<ConstraintLayout.LayoutParams> {
                 topMargin = baseTopMargin + bars.top
             }
@@ -295,16 +290,27 @@ class PhotoCaptureActivity : AppCompatActivity() {
     }
 
     /** Bam Back khi dang xem lai anh -> chi dong man xem lai (khong gui), khong thoat man
-     *  hinh chup anh. Bam Back luc khac se dua app xuong nen (giong nut thoat @btnExit)
-     *  chu khong dong han Activity - man hinh nay gio la man hinh chinh duy nhat cua app
-     *  nen phai giu nguyen tac "Back = xuong nen, khong tat" nhu thiet ke cu. */
+     *  hinh chup anh. Bam Back luc khac (khong con nut X rieng) -> THOAT HAN app va NGAT
+     *  KET NOI luon, KHAC voi thiet ke cu la chi dua app xuong nen giu webcam chay ngam. */
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (layoutPhotoReview.visibility == View.VISIBLE) {
             closePhotoReview()
         } else {
-            moveTaskToBack(true)
+            exitAppAndDisconnect()
         }
+    }
+
+    /** Thoat han ung dung + ngat ket noi webcam: gui ACTION_STOP_SHARING cho
+     *  CameraStreamService de dong phien (dong camera, bao Firebase phong da ket thuc,
+     *  roi tu stopSelf()) giong het khi bam "Kết thúc" tren thong bao, sau do dong toan
+     *  bo Activity trong task (finishAffinity) de ung dung bien han khoi man hinh/da
+     *  nhiem chu khong con chay ngam nua. */
+    private fun exitAppAndDisconnect() {
+        startService(Intent(this, CameraStreamService::class.java).apply {
+            action = CameraStreamService.ACTION_STOP_SHARING
+        })
+        finishAffinity()
     }
 
     /**
