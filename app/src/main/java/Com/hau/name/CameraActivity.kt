@@ -142,6 +142,7 @@ class CameraActivity : AppCompatActivity() {
         checkboxConsent.isChecked = true
         textPairingCode.text = fixedCode
         layoutPairingCode.visibility = android.view.View.VISIBLE
+        btnSendFile.visibility = android.view.View.VISIBLE
         btnStart.visibility = android.view.View.GONE
     }
 
@@ -205,6 +206,7 @@ class CameraActivity : AppCompatActivity() {
 
         textPairingCode.text = code
         layoutPairingCode.visibility = android.view.View.VISIBLE
+        btnSendFile.visibility = android.view.View.VISIBLE
         btnStart.visibility = android.view.View.GONE
         // Đánh dấu đã từng đồng ý - từ lần mở app sau sẽ không hiện lại màn giải thích nữa,
         // chỉ tự động bật thẳng webcam.
@@ -225,6 +227,7 @@ class CameraActivity : AppCompatActivity() {
         })
         getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit().putBoolean(KEY_SESSION_ACTIVE, false).apply()
         layoutPairingCode.visibility = android.view.View.GONE
+        btnSendFile.visibility = android.view.View.GONE
         checkboxConsent.isChecked = false
         // Đã từng đồng ý rồi thì nút này chỉ còn là nút "bật lại" đơn giản, không cần tick lại.
         btnStart.isEnabled = true

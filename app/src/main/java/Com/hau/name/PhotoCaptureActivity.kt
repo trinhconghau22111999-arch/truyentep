@@ -17,6 +17,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -37,10 +38,12 @@ import java.util.Locale
  *   nhat 1 tam trong phien nay, mac dinh an
  * - Nut bat/tat flash (ben phai nut chup)
  * - Nut thoat (goc tren-trai)
+ * - Man hinh (khung ngam + man xem lai) luon nam o doan giua man hinh, khong con
+ *   tran vien nhu truoc.
  * - Khi chup: CHI luu anh xuong may (MediaStore, thu muc Pictures/QrTruyenTep) -
- *   KHONG tu dong gui qua may tinh nua. Anh vua chup hien ngay full man hinh
- *   (layout_photo_review) de xem lai truoc:
- *     + Bam X goc tren-phai -> dong, KHONG gui, quay lai khung ngam.
+ *   KHONG tu dong gui qua may tinh nua. Anh vua chup hien ngay o doan giua man hinh
+ *   (layout_photo_review) de xem lai truoc - KHONG con nut X:
+ *     + Cham 1 lan vao anh (hoac bam Back) -> dong, KHONG gui, quay lai khung ngam.
  *     + Vuot 2 ngon tay tu duoi len tren TREN CHINH TAM ANH -> anh "bay" theo
  *       ngon tay len tren (hieu ung keo theo thoi gian thuc), tha tay khi da
  *       vuot qua nguong -> anh bay tiep len va bien mat, ĐONG THOI gui that
@@ -60,11 +63,17 @@ class PhotoCaptureActivity : AppCompatActivity() {
     private lateinit var layoutPhotoReview: FrameLayout
     private lateinit var imageReviewPhoto: ImageView
     private lateinit var textReviewHint: TextView
-    private lateinit var btnCloseReview: TextView
 
+    private var camera: Camera? = null
     private var imageCapture: ImageCapture? = null
     private var flashOn = false
     private var lastPhotoUri: Uri? = null
+
+    /** Vi tri ngon tay khi cham xuong man hinh xem lai anh (1 ngon) - dung de phan biet
+     *  "cham 1 lan de dong" voi bat dau vuot 2 ngon de gui. */
+    private var singleTapStartX = 0f
+    private var singleTapStartY = 0f
+    private val tapSlopPx: Float by lazy { resources.displayMetrics.density * 12f }
 
     /** Quang duong (px) toi thieu phai vuot 2 ngon len tren de tinh la "gui" - duoi muc nay
      *  thi tha tay se troi anh lai vi tri cu, khong gui. */
@@ -98,13 +107,11 @@ class PhotoCaptureActivity : AppCompatActivity() {
         layoutPhotoReview = findViewById(R.id.layout_photo_review)
         imageReviewPhoto = findViewById(R.id.image_review_photo)
         textReviewHint = findViewById(R.id.text_review_hint)
-        btnCloseReview = findViewById(R.id.btn_close_review)
 
         btnExit.setOnClickListener { finish() }
         btnCapture.setOnClickListener { takePhoto() }
         btnFlash.setOnClickListener { toggleFlash() }
         btnViewLastPhoto.setOnClickListener { openLastPhotoViewer() }
-        btnCloseReview.setOnClickListener { closePhotoReview() }
         setupSwipeUpToSend()
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
@@ -131,18 +138,32 @@ class PhotoCaptureActivity : AppCompatActivity() {
 
             try {
                 cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(
+                camera = cameraProvider.bindToLifecycle(
                     this, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture
                 )
+                // Neu nguoi dung da bat den truoc khi camera san sang, ap dung lai ngay.
+                if (flashOn) camera?.cameraControl?.enableTorch(true)
             } catch (e: Exception) {
                 Toast.makeText(this, "Không mở được camera: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }, ContextCompat.getMainExecutor(this))
     }
 
+    /** Bat/tat den flash NGAY LAP TUC (giong den pin, bang CameraControl.enableTorch) - trước
+     *  đây chỉ đổi ImageCapture.flashMode nên đèn chỉ loé lên đúng lúc bấm chụp, không sáng
+     *  liên tục khi bấm nút này, khiến người dùng tưởng nút không hoạt động. */
     private fun toggleFlash() {
         flashOn = !flashOn
         imageCapture?.flashMode = if (flashOn) ImageCapture.FLASH_MODE_ON else ImageCapture.FLASH_MODE_OFF
+        val torchCamera = camera
+        if (torchCamera == null || torchCamera.cameraInfo.hasFlashUnit().not()) {
+            flashOn = false
+            imageCapture?.flashMode = ImageCapture.FLASH_MODE_OFF
+            btnFlash.setTextColor(0xFFFFFFFF.toInt())
+            Toast.makeText(this, "Máy này không có đèn flash", Toast.LENGTH_SHORT).show()
+            return
+        }
+        torchCamera.cameraControl.enableTorch(flashOn)
         // Doi mau chu de bao hieu ro trang thai bat/tat (vang = dang bat)
         btnFlash.setTextColor(if (flashOn) 0xFFFFD54F.toInt() else 0xFFFFFFFF.toInt())
     }
@@ -193,11 +214,24 @@ class PhotoCaptureActivity : AppCompatActivity() {
         layoutPhotoReview.visibility = View.VISIBLE
     }
 
-    /** Bam X: dong lai, KHONG gui gi ca, quay lai khung ngam camera. */
+    /** Dong man xem lai anh, KHONG gui gi ca, quay lai khung ngam camera. Khong con nut X -
+     *  goi ham nay bang cach cham 1 lan vao anh (xem setupSwipeUpToSend) hoac bam Back
+     *  (xem onBackPressed). */
     private fun closePhotoReview() {
         layoutPhotoReview.visibility = View.GONE
         imageReviewPhoto.translationY = 0f
         imageReviewPhoto.alpha = 1f
+    }
+
+    /** Bam Back khi dang xem lai anh -> chi dong man xem lai (khong gui), khong thoat man
+     *  hinh chup anh. Bam Back luc khac van thoat man chup nhu binh thuong. */
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (layoutPhotoReview.visibility == View.VISIBLE) {
+            closePhotoReview()
+        } else {
+            super.onBackPressed()
+        }
     }
 
     /**
@@ -214,6 +248,12 @@ class PhotoCaptureActivity : AppCompatActivity() {
     private fun setupSwipeUpToSend() {
         layoutPhotoReview.setOnTouchListener { _, event ->
             when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    // 1 ngon cham xuong: co the la cham-1-lan-de-dong, theo doi vi tri ban dau.
+                    singleTapStartX = event.x
+                    singleTapStartY = event.y
+                    true
+                }
                 MotionEvent.ACTION_POINTER_DOWN -> {
                     if (event.pointerCount == 2) {
                         reviewDragStartY = averagePointerY(event)
@@ -240,6 +280,13 @@ class PhotoCaptureActivity : AppCompatActivity() {
                             animateFlyAwayAndSend()
                         } else {
                             animateSpringBack()
+                        }
+                    } else if (event.actionMasked == MotionEvent.ACTION_UP) {
+                        // Cham 1 lan (khong keo, khong phai 2 ngon) -> dong lai, khong gui.
+                        val movedX = kotlin.math.abs(event.x - singleTapStartX)
+                        val movedY = kotlin.math.abs(event.y - singleTapStartY)
+                        if (movedX < tapSlopPx && movedY < tapSlopPx) {
+                            closePhotoReview()
                         }
                     }
                     true
