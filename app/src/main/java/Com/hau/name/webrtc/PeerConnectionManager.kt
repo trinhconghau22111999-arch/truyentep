@@ -1,6 +1,8 @@
 package Com.hau.name.webrtc
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import org.webrtc.DataChannel
 import org.webrtc.DefaultVideoDecoderFactory
@@ -47,6 +49,13 @@ private const val BUFFERED_AMOUNT_HIGH_WATERMARK = 1L * 1024 * 1024 // 1MB: tam 
 private const val BUFFERED_AMOUNT_LOW_WATERMARK = 256L * 1024        // 256KB: gui tiep khi da xuong duoi
 private const val DATA_CHANNEL_LABEL = "filetransfer"
 
+// Heartbeat qua DataChannel: connectionState/readyState cua WebRTC co the KHONG chuyen
+// sang disconnected/failed dung luc du duong truyen thuc te da "treo" (hay gap khi doi
+// mang di dong wifi<->4G, NAT/CGNAT timeout ngam) - luc do ca 2 phia deu khong biet de tu
+// noi lai. Gui 1 goi tin nho dinh ky de phia may tinh co cach xac nhan "du lieu THUC SU con
+// chay qua" thay vi chi dua vao trang thai bao cao boi API.
+private const val HEARTBEAT_INTERVAL_MS = 5000L
+
 /** ICE servers dùng STUN công khai của Google + TURN dự phòng nếu 2 máy khác mạng LAN. */
 private val ICE_SERVERS = listOf(
     PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
@@ -91,6 +100,36 @@ class PeerConnectionManager(
     /** Dung de sendFile() cho (Object.wait) toi khi onBufferedAmountChange() bao buffer da
      *  giam xuong duoi muc thap - xem BUFFERED_AMOUNT_*_WATERMARK o tren. */
     private val bufferedAmountLock = Object()
+
+    // Heartbeat - xem ghi chu o HEARTBEAT_INTERVAL_MS. Chi dung o phia isHost (dien thoai),
+    // vi day la ben tao dataChannel.
+    private val heartbeatHandler = Handler(Looper.getMainLooper())
+    private var heartbeatRunnable: Runnable? = null
+
+    private fun startHeartbeat() {
+        stopHeartbeat()
+        val runnable = object : Runnable {
+            override fun run() {
+                val channel = dataChannel
+                if (channel != null && channel.state() == DataChannel.State.OPEN) {
+                    try {
+                        val ping = org.json.JSONObject().apply { put("type", "ping") }
+                        channel.send(DataChannel.Buffer(
+                            java.nio.ByteBuffer.wrap(ping.toString().toByteArray()), false
+                        ))
+                    } catch (e: Exception) { /* kenh vua dong giua chung - bo qua, se tu dung o lan sau */ }
+                    heartbeatHandler.postDelayed(this, HEARTBEAT_INTERVAL_MS)
+                }
+            }
+        }
+        heartbeatRunnable = runnable
+        heartbeatHandler.postDelayed(runnable, HEARTBEAT_INTERVAL_MS)
+    }
+
+    private fun stopHeartbeat() {
+        heartbeatRunnable?.let { heartbeatHandler.removeCallbacks(it) }
+        heartbeatRunnable = null
+    }
 
     /** Track video nhận được từ phía bên kia (chỉ có ý nghĩa khi [isHost] = false). */
     fun remoteVideoTrackOrNull(): VideoTrack? = remoteVideoTrack
@@ -190,7 +229,11 @@ class PeerConnectionManager(
             dataChannel?.registerObserver(object : DataChannel.Observer {
                 override fun onStateChange() {
                     Log.d(TAG, "DataChannel state: ${dataChannel?.state()}")
-                    if (dataChannel?.state() == DataChannel.State.OPEN) onDataChannelOpen()
+                    when (dataChannel?.state()) {
+                        DataChannel.State.OPEN -> { onDataChannelOpen(); startHeartbeat() }
+                        DataChannel.State.CLOSING, DataChannel.State.CLOSED -> stopHeartbeat()
+                        else -> {}
+                    }
                 }
                 override fun onMessage(buffer: DataChannel.Buffer) {}
                 override fun onBufferedAmountChange(previousAmount: Long) {
@@ -393,6 +436,7 @@ class PeerConnectionManager(
     }
 
     fun release() {
+        stopHeartbeat()
         localVideoTrack?.dispose()
         dataChannel?.close()
         dataChannel?.dispose()
