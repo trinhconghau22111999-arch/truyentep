@@ -27,7 +27,6 @@ import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
-import androidx.camera.core.MirrorMode
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -277,13 +276,6 @@ class PhotoCaptureActivity : AppCompatActivity() {
                 // CAPTURE_MODE_MAXIMIZE_QUALITY - xu ly anh ky/lau hon) -> chup
                 // nhanh hon ro ret, dac biet tren may trung binh/thap.
                 .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                // Camera TRUOC: preview tren man hinh da tu dong lat guong (hanh vi
-                // mac dinh cua CameraX Preview) nhung anh LUU RA lai KHONG lat theo
-                // mac dinh -> nguoi dung thay preview 1 kieu, anh luu ra lai nguoc
-                // (chu/vat bi lat trai-phai so voi nhung gi ho thay luc chup). Bat
-                // MIRROR_MODE_ON_FRONT_ONLY de anh LUU RA cung duoc lat giong nhu
-                // preview khi dung camera truoc (camera sau khong bi anh huong).
-                .setMirrorMode(MirrorMode.MIRROR_MODE_ON_FRONT_ONLY)
                 .build()
 
             try {
@@ -368,9 +360,18 @@ class PhotoCaptureActivity : AppCompatActivity() {
                 put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/QrTruyenTep")
             }
         }
+        // Camera TRUOC: preview tren man hinh da tu dong lat guong (hanh vi mac dinh
+        // cua CameraX Preview) nhung anh LUU RA lai KHONG lat theo mac dinh -> nguoi
+        // dung thay preview 1 kieu, anh luu ra lai nguoc (chu/vat bi lat trai-phai so
+        // voi nhung gi ho thay luc chup). Dat Metadata.isReversedHorizontal = true khi
+        // dang dung camera truoc de anh LUU RA cung duoc lat giong preview (ImageCapture
+        // KHONG co setMirrorMode() nhu VideoCapture/Preview - phai lat qua Metadata nay).
+        val metadata = ImageCapture.Metadata().apply {
+            isReversedHorizontal = currentCameraSelector == CameraSelector.DEFAULT_FRONT_CAMERA
+        }
         val outputOptions = ImageCapture.OutputFileOptions.Builder(
             contentResolver, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues
-        ).build()
+        ).setMetadata(metadata).build()
 
         capture.takePicture(
             outputOptions,
