@@ -89,8 +89,17 @@ class CameraActivity : AppCompatActivity() {
         }
         ContextCompat.startForegroundService(this, serviceIntent)
 
+        // SUA LOI NGHIEM TRONG: truoc day dung .setValue() ghi DE TOAN BO node
+        // rooms/{code} - xoa sach ca nhanh "viewers" ben trong (du lieu may
+        // tinh dang cho ket noi lai: present/hostGeneration...) MOI LAN mo
+        // app. Ket qua: dung luc nguoi dung mo lai app de "ket noi lai ngay"
+        // thi chinh hanh dong do lai xoa sach du lieu ma may tinh vua dang ky
+        // lai de cho - khien khong bao gio ket noi lai duoc, phai nhap lai
+        // ma moi duoc (dang ky mot viewerId MOI, khac voi cai vua bi xoa).
+        // Dung updateChildren() de CHI cap nhat 2 truong nay, KHONG dung gi
+        // toi "viewers" - de may tinh dang cho co co hoi duoc thay va ket noi.
         com.google.firebase.database.FirebaseDatabase.getInstance().reference
-            .child("rooms").child(code).setValue(
+            .child("rooms").child(code).updateChildren(
                 mapOf("status" to "waiting", "consentGivenAt" to System.currentTimeMillis())
             ).addOnFailureListener { e ->
                 Toast.makeText(this, "Không thể ghi trạng thái phòng lên máy chủ: ${e.message}",
