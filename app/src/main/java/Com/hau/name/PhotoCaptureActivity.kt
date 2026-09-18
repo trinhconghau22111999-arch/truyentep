@@ -4,6 +4,10 @@ import android.Manifest
 import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -35,6 +39,15 @@ import androidx.constraintlayout.widget.ConstraintLayout
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+// Nen + giam kich thuoc anh truoc khi gui - dung CUNG do phan giai voi luong video
+// (xem README: stream video quay 1280x720) va nen JPEG o muc chat luong tuong duong
+// video (video bi gioi han MAX_VIDEO_BITRATE_BPS = 2Mbps cho 1280x720@20fps trong
+// PeerConnectionManager.kt - ty le nen rat cao). Anh chup tu CameraX o do phan giai
+// cam bien day du (thuong vai MB, doi may 10-50MP) du chi de xem tren man hinh may
+// tinh - giam ve cung muc voi video giup gui/nhan nhanh hon nhieu lan ma van du net.
+private const val PHOTO_SEND_MAX_LONG_EDGE = 1280
+private const val PHOTO_SEND_JPEG_QUALITY = 80
 
 /**
  * Man hinh Chup anh (mo tu nut "📷 Chup anh" tren CameraActivity).
@@ -487,6 +500,53 @@ class PhotoCaptureActivity : AppCompatActivity() {
     }
 
     /**
+     * Doc + xoay lai theo EXIF (BitmapFactory khong tu doc huong anh) + giam kich
+     * thuoc ve toi da [PHOTO_SEND_MAX_LONG_EDGE] o canh dai + nen JPEG chat luong
+     * [PHOTO_SEND_JPEG_QUALITY] - dung cung do phan giai/muc nen voi luong video de
+     * gui/nhan nhanh tuong duong. Neu decode/nen that bai vi ly do gi do, tra ve
+     * bytes GOC (khong lam mat anh) - chi la se gui cham hon binh thuong.
+     */
+    private fun compressPhotoForSending(original: ByteArray): ByteArray {
+        try {
+            val rotationDegrees = try {
+                val exif = ExifInterface(java.io.ByteArrayInputStream(original))
+                when (exif.getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL
+                )) {
+                    ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+                    ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                    ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                    else -> 0f
+                }
+            } catch (e: Exception) { 0f }
+
+            val decoded = BitmapFactory.decodeByteArray(original, 0, original.size) ?: return original
+            val rotated = if (rotationDegrees != 0f) {
+                val matrix = Matrix().apply { postRotate(rotationDegrees) }
+                Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true).also {
+                    if (it !== decoded) decoded.recycle()
+                }
+            } else decoded
+
+            val longEdge = maxOf(rotated.width, rotated.height)
+            val scale = if (longEdge > PHOTO_SEND_MAX_LONG_EDGE) PHOTO_SEND_MAX_LONG_EDGE.toFloat() / longEdge else 1f
+            val resized = if (scale < 1f) {
+                Bitmap.createScaledBitmap(
+                    rotated, (rotated.width * scale).toInt().coerceAtLeast(1),
+                    (rotated.height * scale).toInt().coerceAtLeast(1), true
+                ).also { if (it !== rotated) rotated.recycle() }
+            } else rotated
+
+            val out = java.io.ByteArrayOutputStream()
+            resized.compress(Bitmap.CompressFormat.JPEG, PHOTO_SEND_JPEG_QUALITY, out)
+            resized.recycle()
+            return out.toByteArray()
+        } catch (e: Exception) {
+            return original // that bai thi gui ban goc, con hon khong gui duoc gi
+        }
+    }
+
+    /**
      * Doc noi dung anh vua chup roi gui sang may tinh qua DataChannel (xem
      * CameraStreamService.sendFileToAllViewers() + PeerConnectionManager.
      * sendFile()). Chay tren luong nen - doc file + gui tung doan khong nen
@@ -497,7 +557,8 @@ class PhotoCaptureActivity : AppCompatActivity() {
         if (uri == null) return
         Thread {
             try {
-                val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@Thread
+                val originalBytes = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@Thread
+                val bytes = compressPhotoForSending(originalBytes)
                 val name = "anh_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) + ".jpg"
                 val sentCount = CameraStreamService.instance?.sendFileToAllViewers(
                     bytes, name, "image/jpeg"
