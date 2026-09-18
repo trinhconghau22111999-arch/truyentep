@@ -125,13 +125,15 @@
     </LinearLayout>
 
     <!-- Nut den flash - DA DOI len 1 hang, nam NGAY PHIA TREN hang nut duoi cung
-         (bottom_controls), van ghim gan canh phai man hinh nhu cu. -->
+         (bottom_controls), van ghim gan canh phai man hinh nhu cu. Khoang cach voi
+         hang duoi rut gon (8dp thay vi 16dp) de 2 nut nam sat, can doi, khong bi
+         "troi" cao qua so voi hang nut chup/doi camera ben duoi. -->
     <ImageView
         android:id="@+id/btn_toggle_flash"
         android:layout_width="44dp"
         android:layout_height="44dp"
         android:layout_marginEnd="24dp"
-        android:layout_marginBottom="16dp"
+        android:layout_marginBottom="8dp"
         android:background="@drawable/bg_round_button"
         android:clickable="true"
         android:contentDescription="Bật/tắt đèn flash"
