@@ -80,6 +80,7 @@ class PhotoCaptureActivity : AppCompatActivity() {
     private lateinit var previewView: PreviewView
     private lateinit var btnCapture: View
     private lateinit var btnFlash: ImageView
+    private lateinit var btnSwitchCamera: ImageView
     private lateinit var btnViewLastPhoto: ImageView
     private lateinit var layoutTopControls: View
     private lateinit var bottomControls: View
@@ -97,6 +98,9 @@ class PhotoCaptureActivity : AppCompatActivity() {
     private var imageCapture: ImageCapture? = null
     private var flashOn = false
     private var lastPhotoUri: Uri? = null
+    /** Camera dang dung - mac dinh camera SAU, doi qua lai khi bam [btnSwitchCamera]. */
+    private var currentCameraSelector: CameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+    private var cameraProvider: ProcessCameraProvider? = null
 
     /** Vi tri ngon tay khi cham xuong man hinh xem lai anh (1 ngon) - dung de phan biet
      *  "cham 1 lan de dong" voi bat dau vuot 2 ngon de gui. */
@@ -139,6 +143,7 @@ class PhotoCaptureActivity : AppCompatActivity() {
         previewView = findViewById(R.id.camera_preview)
         btnCapture = findViewById(R.id.btn_capture)
         btnFlash = findViewById(R.id.btn_toggle_flash)
+        btnSwitchCamera = findViewById(R.id.btn_switch_camera)
         btnViewLastPhoto = findViewById(R.id.btn_view_last_photo)
         layoutTopControls = findViewById(R.id.layout_top_controls)
         bottomControls = findViewById(R.id.bottom_controls)
@@ -162,6 +167,7 @@ class PhotoCaptureActivity : AppCompatActivity() {
         // + ngat ket noi (xem onBackPressed / exitAppAndDisconnect).
         btnCapture.setOnClickListener { takePhoto() }
         btnFlash.setOnClickListener { toggleFlash() }
+        btnSwitchCamera.setOnClickListener { toggleCamera() }
         btnViewLastPhoto.setOnClickListener { openLastPhotoViewer() }
         btnSendFile.setOnClickListener {
             startActivity(Intent(this, SendFileActivity::class.java).apply {
@@ -257,7 +263,8 @@ class PhotoCaptureActivity : AppCompatActivity() {
     private fun startCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener({
-            val cameraProvider = cameraProviderFuture.get()
+            val provider = cameraProviderFuture.get()
+            cameraProvider = provider
 
             val preview = Preview.Builder().build().also {
                 it.setSurfaceProvider(previewView.surfaceProvider)
@@ -268,16 +275,43 @@ class PhotoCaptureActivity : AppCompatActivity() {
                 .build()
 
             try {
-                cameraProvider.unbindAll()
-                camera = cameraProvider.bindToLifecycle(
-                    this, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture
+                provider.unbindAll()
+                camera = provider.bindToLifecycle(
+                    this, currentCameraSelector, preview, imageCapture
                 )
                 // Neu nguoi dung da bat den truoc khi camera san sang, ap dung lai ngay.
+                // Camera TRUOC thuong khong co den flash - enableTorch() se tu that bai
+                // ngay ben trong (da kiem tra hasFlashUnit() truoc do trong toggleFlash()).
                 if (flashOn) camera?.cameraControl?.enableTorch(true)
             } catch (e: Exception) {
                 Toast.makeText(this, "Không mở được camera: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    /** Doi qua lai camera truoc/sau - bam nut o vi tri cu cua nut flash (xem
+     *  activity_photo_capture.xml). Kiem tra may co camera do khong truoc khi doi
+     *  (mot so may chi co 1 camera) de tranh crash; neu khong co thi bao va giu nguyen. */
+    private fun toggleCamera() {
+        val provider = cameraProvider ?: return
+        val nextSelector = if (currentCameraSelector == CameraSelector.DEFAULT_BACK_CAMERA) {
+            CameraSelector.DEFAULT_FRONT_CAMERA
+        } else {
+            CameraSelector.DEFAULT_BACK_CAMERA
+        }
+        if (!provider.hasCamera(nextSelector)) {
+            Toast.makeText(this, "Máy này không có camera còn lại để đổi", Toast.LENGTH_SHORT).show()
+            return
+        }
+        // Doi camera thi tat den flash truoc (camera moi co the khong co den, hoac
+        // dang bat den camera cu dang truyen sang camera moi se gay nham lan) -
+        // nguoi dung tu bat lai neu can va camera moi ho tro.
+        if (flashOn) {
+            flashOn = false
+            updateFlashButtonIcon()
+        }
+        currentCameraSelector = nextSelector
+        startCamera()
     }
 
     /** Bat/tat den flash NGAY LAP TUC (giong den pin, bang CameraControl.enableTorch) - trước

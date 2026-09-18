@@ -124,11 +124,30 @@
 
     </LinearLayout>
 
+    <!-- Nut den flash - DA DOI len 1 hang, nam NGAY PHIA TREN hang nut duoi cung
+         (bottom_controls), van ghim gan canh phai man hinh nhu cu. -->
+    <ImageView
+        android:id="@+id/btn_toggle_flash"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_marginEnd="24dp"
+        android:layout_marginBottom="16dp"
+        android:background="@drawable/bg_round_button"
+        android:clickable="true"
+        android:contentDescription="Bật/tắt đèn flash"
+        android:focusable="true"
+        android:padding="10dp"
+        android:src="@drawable/ic_flash_off"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/bottom_controls" />
+
     <!-- Hang nut duoi cung - doi tu LinearLayout sang ConstraintLayout de nut chup LUON
          NAM CHINH GIUA man hinh (khong bi lech khi nut xem-anh-vua-chup dang an), va nut
          flash LUON nam gan CANH PHAI (ghim theo canh man hinh, khong dinh sat nut chup) -
          giong bo cuc quen thuoc cua cac app camera: xem-anh-vua-chup (trai) - chup (giua) -
-         flash (phai), on dinh du dang o trang thai nao. -->
+         flash (phai), on dinh du dang o trang thai nao.
+         SUA: nut flash da doi len 1 hang phia tren (xem @id/btn_toggle_flash o tren) -
+         vi tri cu (canh phai, ngang hang nut chup) gio la nut doi camera truoc/sau. -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/bottom_controls"
         android:layout_width="match_parent"
@@ -168,18 +187,19 @@
             app:layout_constraintTop_toTopOf="@id/btn_capture"
             app:layout_constraintBottom_toBottomOf="@id/btn_capture" />
 
-        <!-- Nut flash - ghim GAN CANH PHAI man hinh, khong dinh sat nut chup -->
+        <!-- Nut doi camera truoc/sau - o DUNG VI TRI CU cua nut flash (gan canh phai,
+             ngang hang nut chup). -->
         <ImageView
-            android:id="@+id/btn_toggle_flash"
+            android:id="@+id/btn_switch_camera"
             android:layout_width="44dp"
             android:layout_height="44dp"
             android:layout_marginEnd="24dp"
             android:background="@drawable/bg_round_button"
             android:clickable="true"
-            android:contentDescription="Bật/tắt đèn flash"
+            android:contentDescription="Đổi camera trước/sau"
             android:focusable="true"
             android:padding="10dp"
-            android:src="@drawable/ic_flash_off"
+            android:src="@drawable/ic_camera_switch"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="@id/btn_capture"
             app:layout_constraintBottom_toBottomOf="@id/btn_capture" />
