@@ -112,11 +112,16 @@ class CameraStreamService : Service() {
      * lai) se KHONG nhan duoc lan gui nay - dung dung yeu cau "chi truyen
      * khi ca 2 dang ket noi thanh cong".
      *
+     * @param onProgress goi lai theo THOI GIAN THUC trong luc gui (0..100) -
+     *   PeerConnectionManager.sendFile() da tinh dung tien do theo tung doan
+     *   (chunk) roi, o day chi chuyen tiep len UI qua handler.post() (vi ham
+     *   nay chay tren Thread rieng, khong duoc dong UI truc tiep).
      * @return so may xem THAT SU nhan duoc (da bat dau gui) - 0 nghia la
      *   khong co may xem nao dang ket noi luc nay.
      */
     fun sendFileToAllViewers(
         fileBytes: ByteArray, fileName: String, mimeType: String,
+        onProgress: (viewerId: String, percent: Int) -> Unit = { _, _ -> },
         onAnyResult: (viewerId: String, success: Boolean) -> Unit = { _, _ -> }
     ): Int {
         var sentCount = 0
@@ -125,9 +130,9 @@ class CameraStreamService : Service() {
             if (!pcm.isReadyToSendFile()) continue
             sentCount++
             Thread {
-                pcm.sendFile(fileBytes, fileName, mimeType, onResult = { success ->
-                    handler.post { onAnyResult(viewerId, success) }
-                })
+                pcm.sendFile(fileBytes, fileName, mimeType,
+                    onProgress = { percent -> handler.post { onProgress(viewerId, percent) } },
+                    onResult = { success -> handler.post { onAnyResult(viewerId, success) } })
             }.start()
         }
         return sentCount

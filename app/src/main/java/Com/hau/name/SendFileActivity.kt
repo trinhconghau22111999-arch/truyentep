@@ -112,6 +112,15 @@ class SendFileActivity : AppCompatActivity() {
         val uri = selectedUris[index]
         val name = queryDisplayName(uri) ?: "tep_$index"
         textSendingStatus.text = "Đang gửi (${index + 1}/${selectedUris.size}): $name"
+        // Tien do co so cua tep nay (cac tep TRUOC do da xong 100%) - tien do
+        // TONG THE = base + (tien do rieng tep hien tai chia deu cho tong so tep).
+        val baseProgress = (index * 100) / selectedUris.size
+        progressSending.progress = baseProgress
+        // Chi cho phep tien do TANG DAN, khong bao gio lui lai: khi gui cho NHIEU
+        // may xem cung luc, moi may bao tien do rieng theo toc do mang cua no -
+        // may nao cham hon co the bao ve sau, sau khi may nhanh hon da bao cao
+        // cao hon - lay gia tri CAO NHAT da thay de thanh tien do khong bi "giat lui".
+        var bestPercentForThisFile = 0
 
         Thread {
             try {
@@ -130,7 +139,16 @@ class SendFileActivity : AppCompatActivity() {
                 var anySuccess = false
                 val lock = Any()
 
-                expected = CameraStreamService.instance?.sendFileToAllViewers(bytes, name, mimeType) { _, success ->
+                expected = CameraStreamService.instance?.sendFileToAllViewers(
+                    bytes, name, mimeType,
+                    onProgress = { _, percent ->
+                        if (percent > bestPercentForThisFile) {
+                            bestPercentForThisFile = percent
+                            val overall = baseProgress + (percent * 1) / selectedUris.size
+                            runOnUiThread { progressSending.progress = overall }
+                        }
+                    }
+                ) { _, success ->
                     synchronized(lock) {
                         finished++
                         if (success) anySuccess = true
