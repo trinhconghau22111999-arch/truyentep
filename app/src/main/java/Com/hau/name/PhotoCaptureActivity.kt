@@ -15,6 +15,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
@@ -101,6 +102,11 @@ class PhotoCaptureActivity : AppCompatActivity() {
     /** Camera dang dung - mac dinh camera SAU, doi qua lai khi bam [btnSwitchCamera]. */
     private var currentCameraSelector: CameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
     private var cameraProvider: ProcessCameraProvider? = null
+
+    /** Bat zoom bang cach chum/xoe 2 ngon tay (pinch-to-zoom) ngay tren khung ngam camera -
+     *  gan lai moi khi startCamera() chay (vd sau khi doi camera truoc/sau) vi doi tuong
+     *  [camera] (CameraX Camera) thay doi theo tung lan bindToLifecycle. */
+    private var scaleGestureDetector: ScaleGestureDetector? = null
 
     /** Vi tri ngon tay khi cham xuong man hinh xem lai anh (1 ngon) - dung de phan biet
      *  "cham 1 lan de dong" voi bat dau vuot 2 ngon de gui. */
@@ -287,10 +293,43 @@ class PhotoCaptureActivity : AppCompatActivity() {
                 // Camera TRUOC thuong khong co den flash - enableTorch() se tu that bai
                 // ngay ben trong (da kiem tra hasFlashUnit() truoc do trong toggleFlash()).
                 if (flashOn) camera?.cameraControl?.enableTorch(true)
+                setupPinchToZoom()
             } catch (e: Exception) {
                 Toast.makeText(this, "Không mở được camera: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    /** Chum/xoe 2 ngon tay tren khung ngam de zoom vao/ra - phai goi lai moi lan startCamera()
+     *  chay (kem [camera] moi) vi zoom la thuoc tinh cua object CameraX Camera hien tai, doi
+     *  camera truoc/sau se tao object [camera] moi hoan toan. Dung setZoomRatio (ty le zoom
+     *  that, vd 1x/2x/3x) thay vi setLinearZoom vi de hieu va khop voi thong so hien thi neu
+     *  sau nay can them chu "x" tren man hinh. Ty le tang/giam theo scaleFactor cua chinh cu
+     *  chi chum tay (khong nhay cam theo toc do vuot tay) va bi gioi han trong khoang
+     *  minZoomRatio..maxZoomRatio thuc te cua tung may/tung ong kinh (CameraX tu bao qua
+     *  ZoomState, co may chi toi ~4x-8x, co may toi vai chuc x). */
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    private fun setupPinchToZoom() {
+        if (camera == null) return
+        if (scaleGestureDetector == null) {
+            scaleGestureDetector = ScaleGestureDetector(
+                this,
+                object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                    override fun onScale(detector: ScaleGestureDetector): Boolean {
+                        val currentCamera = camera ?: return false
+                        val zoomState = currentCamera.cameraInfo.zoomState.value ?: return false
+                        val newRatio = (zoomState.zoomRatio * detector.scaleFactor)
+                            .coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio)
+                        currentCamera.cameraControl.setZoomRatio(newRatio)
+                        return true
+                    }
+                }
+            )
+            previewView.setOnTouchListener { _, event ->
+                scaleGestureDetector?.onTouchEvent(event)
+                true
+            }
+        }
     }
 
     /** Doi qua lai camera truoc/sau - bam nut o vi tri cu cua nut flash (xem
