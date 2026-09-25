@@ -86,7 +86,11 @@ class PeerConnectionManager(
     /** Null trên Máy B (không cần render video của mình), non-null trên Máy A. */
     private val remoteSink: VideoSink? = null,
     private val onConnected: () -> Unit = {},
-    private val onDisconnected: () -> Unit = {}
+    private val onDisconnected: () -> Unit = {},
+    /** Goi khi nhan xong 1 tep TU MAY TINH gui sang (chieu nguoc lai voi sendFile() ben duoi) -
+     *  (ten tep, mime type, toan bo noi dung). Chi co y nghia khi [isHost] = true, vi chi may
+     *  dien thoai (ben tao dataChannel) moi la noi nhan tep theo chieu nay. */
+    private val onFileReceived: (name: String, mimeType: String, bytes: ByteArray) -> Unit = { _, _, _ -> }
 ) {
     private var peerConnection: PeerConnection? = null
     private var localVideoTrack: VideoTrack? = null
@@ -100,6 +104,19 @@ class PeerConnectionManager(
     /** Dung de sendFile() cho (Object.wait) toi khi onBufferedAmountChange() bao buffer da
      *  giam xuong duoi muc thap - xem BUFFERED_AMOUNT_*_WATERMARK o tren. */
     private val bufferedAmountLock = Object()
+
+    /** Trang thai 1 phien nhan tep TU MAY TINH gui sang (chieu nguoc, xem onFileReceived) -
+     *  gom cac doan nhi phan vao bo nho toi khi nhan du (file-end), giong het cach chieu gui
+     *  o day cung lam voi tep/anh (xem sendFile() phia duoi). null khi khong co phien nao dang do. */
+    private var incomingFile: IncomingFile? = null
+    private class IncomingFile(
+        val transferId: String,
+        val name: String,
+        val mimeType: String,
+        val totalSize: Int
+    ) {
+        val chunks = java.io.ByteArrayOutputStream(if (totalSize > 0) totalSize else FILE_CHUNK_SIZE)
+    }
 
     // Heartbeat - xem ghi chu o HEARTBEAT_INTERVAL_MS. Chi dung o phia isHost (dien thoai),
     // vi day la ben tao dataChannel.
@@ -235,7 +252,9 @@ class PeerConnectionManager(
                         else -> {}
                     }
                 }
-                override fun onMessage(buffer: DataChannel.Buffer) {}
+                override fun onMessage(buffer: DataChannel.Buffer) {
+                    handleIncomingDataChannelMessage(buffer)
+                }
                 override fun onBufferedAmountChange(previousAmount: Long) {
                     // Luu y: tham so la luong TRUOC do (previousAmount), khong phai luong hien
                     // tai - phai tu doc lai dataChannel?.bufferedAmount() de biet luong THUC TE
@@ -404,6 +423,58 @@ class PeerConnectionManager(
         }
         channel.send(DataChannel.Buffer(java.nio.ByteBuffer.wrap(endMsg.toString().toByteArray()), false))
         onResult(true)
+    }
+
+    /**
+     * Xu ly 1 tin nhan den tu DataChannel - dung CHUNG kenh voi chieu gui
+     * [sendFile] o tren nhung theo CHIEU NGUOC LAI: nhan tep TU MAY TINH
+     * (app Qrtuxa) gui sang dien thoai nay. Cung 1 giao thuc 3 buoc:
+     *   1. Tin nhan JSON {type:"file-start", transferId, name, mimeType, size, totalChunks}
+     *   2. Cac doan nhi phan lien tiep (moi doan toi da FILE_CHUNK_SIZE)
+     *   3. Tin nhan JSON {type:"file-end", transferId} - hoan tat, goi
+     *      [onFileReceived] voi toan bo du lieu da gom.
+     *   Hoac {type:"file-cancel", transferId} bat cu luc nao - may tinh bao huy.
+     *
+     * Tin nhan van ban (JSON) va nhi phan deu di qua CUNG 1 callback nay -
+     * phan biet bang buffer.binary (WebRTC danh dau san moi Buffer la van
+     * ban hay nhi phan, khop voi tham so `binary` truyen vao luc gui o ca 2
+     * dau - xem sendFile() gui `false` cho JSON, `true` cho doan du lieu).
+     */
+    private fun handleIncomingDataChannelMessage(buffer: DataChannel.Buffer) {
+        if (!buffer.binary) {
+            val bytes = ByteArray(buffer.data.remaining())
+            buffer.data.get(bytes)
+            val text = String(bytes, Charsets.UTF_8)
+            val msg = try { org.json.JSONObject(text) } catch (e: Exception) { return }
+            when (msg.optString("type")) {
+                "file-start" -> {
+                    incomingFile = IncomingFile(
+                        transferId = msg.optString("transferId"),
+                        name = msg.optString("name", "tep_" + System.currentTimeMillis()),
+                        mimeType = msg.optString("mimeType", "application/octet-stream"),
+                        totalSize = msg.optInt("size", 0)
+                    )
+                }
+                "file-end" -> {
+                    val f = incomingFile ?: return
+                    if (f.transferId != msg.optString("transferId")) return
+                    incomingFile = null
+                    onFileReceived(f.name, f.mimeType, f.chunks.toByteArray())
+                }
+                "file-cancel" -> {
+                    val f = incomingFile ?: return
+                    if (f.transferId == msg.optString("transferId")) incomingFile = null
+                }
+            }
+        } else {
+            // Doan nhi phan - chi gom vao phien dang do (neu co). Bo qua neu
+            // chua nhan duoc file-start truoc do (du lieu lac, khong ro thuoc
+            // phien nao) - tranh gom nham vao 1 tep khac.
+            val f = incomingFile ?: return
+            val bytes = ByteArray(buffer.data.remaining())
+            buffer.data.get(bytes)
+            f.chunks.write(bytes)
+        }
     }
 
     /** true neu ca PeerConnection va DataChannel deu dang san sang de gui tep. */

@@ -4,13 +4,16 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.Environment
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.provider.MediaStore
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import Com.hau.name.webrtc.PeerConnectionManager
@@ -299,12 +302,56 @@ class CameraStreamService : Service() {
             onDisconnected = {
                 Log.d(TAG, "Mất kết nối WebRTC với máy xem ${conn.viewerId} — sẽ tự nối lại")
                 scheduleReconnectForViewer(code, conn)
+            },
+            onFileReceived = { name, mimeType, bytes ->
+                saveReceivedFileToDownloads(name, mimeType, bytes)
             }
         )
         conn.peerConnectionManager = pcm
         pcm.init()
         pcm.startFileTransferOffer()
         updateNotification()
+    }
+
+    /**
+     * Luu 1 tep nhan duoc TU MAY TINH (app Qrtuxa gui sang qua nut "Chon tep
+     * & gui" - xem PeerConnectionManager.onFileReceived) vao thu muc
+     * Download cong khai cua may - giong huong nguoc lai voi anh/tep dien
+     * thoai gui LEN may tinh, dung MediaStore theo dung cach Android khuyen
+     * dung tu API 29 tro len (khong can quyen WRITE_EXTERNAL_STORAGE), kem
+     * du phong ghi thang bang File API cho cac ban Android cu hon.
+     */
+    private fun saveReceivedFileToDownloads(name: String, mimeType: String, bytes: ByteArray) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                    put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/QrTruyenTep")
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+                val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                if (uri == null) {
+                    Log.e(TAG, "saveReceivedFileToDownloads: khong tao duoc entry MediaStore")
+                    return
+                }
+                contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                values.clear()
+                values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                contentResolver.update(uri, values, null, null)
+            } else {
+                @Suppress("DEPRECATION")
+                val dir = java.io.File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                    "QrTruyenTep"
+                )
+                if (!dir.exists()) dir.mkdirs()
+                java.io.File(dir, name).writeBytes(bytes)
+            }
+            Log.d(TAG, "Da luu tep nhan tu may tinh: $name (${bytes.size} bytes)")
+        } catch (e: Exception) {
+            Log.e(TAG, "saveReceivedFileToDownloads that bai: ${e.message}", e)
+        }
     }
 
     /** Backoff riêng cho từng máy xem — 1 máy rớt mạng không ảnh hưởng các máy khác. */
