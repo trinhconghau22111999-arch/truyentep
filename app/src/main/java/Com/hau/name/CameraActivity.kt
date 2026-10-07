@@ -98,7 +98,7 @@ class CameraActivity : AppCompatActivity() {
         // ma moi duoc (dang ky mot viewerId MOI, khac voi cai vua bi xoa).
         // Dung updateChildren() de CHI cap nhat 2 truong nay, KHONG dung gi
         // toi "viewers" - de may tinh dang cho co co hoi duoc thay va ket noi.
-        com.google.firebase.database.FirebaseDatabase.getInstance().reference
+        Com.hau.name.FirebaseDb.root
             .child("rooms").child(code).updateChildren(
                 mapOf("status" to "waiting", "consentGivenAt" to System.currentTimeMillis())
             ).addOnFailureListener { e ->

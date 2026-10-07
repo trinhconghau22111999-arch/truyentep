@@ -22,7 +22,6 @@ import com.google.firebase.database.ChildEventListener
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.DatabaseReference
-import com.google.firebase.database.FirebaseDatabase
 import org.webrtc.EglBase
 
 private const val TAG = "CameraStreamService"
@@ -204,7 +203,7 @@ class CameraStreamService : Service() {
         viewersWatchStarted = true
         peerFactory = peerFactory ?: PeerConnectionManager.createFactory(this, eglBase)
 
-        com.google.firebase.database.FirebaseDatabase.getInstance().reference
+        Com.hau.name.FirebaseDb.root
             .child("rooms").child(code).child("consentGivenAt").setValue(System.currentTimeMillis())
 
         watchViewers(code)
@@ -223,28 +222,15 @@ class CameraStreamService : Service() {
      * KHÔNG có "present" chắc chắn là rác — xoá ngay, không cấp slot cho nó.
      */
     private fun watchViewers(code: String) {
-        val ref = FirebaseDatabase.getInstance().reference.child("rooms").child(code).child("viewers")
+        val ref = FirebaseDb.root.child("rooms").child(code).child("viewers")
         viewersListenerRef = ref
         val listener = object : ChildEventListener {
             override fun onChildAdded(snapshot: DataSnapshot, prevKey: String?) {
-                val viewerId = snapshot.key ?: return
-                if (viewerConns.containsKey(viewerId)) return
-                if (!snapshot.hasChild("present")) {
-                    Log.d(TAG, "Dọn viewer rác (không có 'present'): $viewerId")
-                    snapshot.ref.removeValue()
-                    return
-                }
-                if (viewerConns.size >= MAX_VIEWERS_PER_CAMERA) {
-                    Log.w(TAG, "Đã đủ $MAX_VIEWERS_PER_CAMERA máy xem, bỏ qua máy xem mới: $viewerId")
-                    return
-                }
-                val conn = ViewerConn(viewerId)
-                conn.reconnectRunnable = Runnable { if (!conn.removed) connectViewer(code, conn) }
-                viewerConns[viewerId] = conn
-                connectViewer(code, conn)
+                admitViewer(code, snapshot)
             }
             override fun onChildRemoved(snapshot: DataSnapshot) {
                 val viewerId = snapshot.key ?: return
+                cancelZombieCheck(viewerId)
                 val conn = viewerConns.remove(viewerId) ?: return
                 conn.removed = true
                 conn.reconnectRunnable?.let { handler.removeCallbacks(it) }
@@ -252,8 +238,19 @@ class CameraStreamService : Service() {
                 conn.signalingClient?.release()
                 Log.d(TAG, "Máy xem $viewerId đã rời hẳn, giải phóng slot")
                 updateNotification()
+                // Có slot trống -> thử nhận lại các máy xem từng bị từ chối vì "đã đủ".
+                rescanPendingViewers(code)
             }
-            override fun onChildChanged(snapshot: DataSnapshot, prevKey: String?) {}
+            override fun onChildChanged(snapshot: DataSnapshot, prevKey: String?) {
+                // Dọn "viewer ma": khi máy tính tắt đột ngột Firebase chỉ xoá field "present"
+                // (onDisconnect) chứ KHÔNG xoá cả node viewerId, nên onChildRemoved không bao
+                // giờ chạy và slot bị giữ mãi (đủ 4 viewer ma là camera từ chối mọi máy mới).
+                // Nếu "present" vắng mặt quá ZOMBIE_TIMEOUT_MS thì xoá hẳn node để giải phóng slot.
+                val viewerId = snapshot.key ?: return
+                if (!viewerConns.containsKey(viewerId)) return
+                if (snapshot.hasChild("present")) cancelZombieCheck(viewerId)
+                else scheduleZombieCheck(code, viewerId)
+            }
             override fun onChildMoved(snapshot: DataSnapshot, prevKey: String?) {}
             override fun onCancelled(error: DatabaseError) {
                 // Trước đây bỏ trống hoàn toàn - nếu Firebase Rules chặn quyền đọc (permission
@@ -267,6 +264,58 @@ class CameraStreamService : Service() {
         }
         viewersChildListener = listener
         ref.addChildEventListener(listener)
+    }
+
+    /** Nhận 1 máy xem mới (hoặc dọn nếu là rác / từ chối nếu đã đủ chỗ). */
+    private fun admitViewer(code: String, snapshot: DataSnapshot) {
+        val viewerId = snapshot.key ?: return
+        if (viewerConns.containsKey(viewerId)) return
+        if (!snapshot.hasChild("present")) {
+            Log.d(TAG, "Dọn viewer rác (không có 'present'): $viewerId")
+            snapshot.ref.removeValue()
+            return
+        }
+        if (viewerConns.size >= MAX_VIEWERS_PER_CAMERA) {
+            Log.w(TAG, "Đã đủ $MAX_VIEWERS_PER_CAMERA máy xem, tạm bỏ qua máy xem mới: $viewerId")
+            return
+        }
+        val conn = ViewerConn(viewerId)
+        conn.reconnectRunnable = Runnable { if (!conn.removed) connectViewer(code, conn) }
+        viewerConns[viewerId] = conn
+        connectViewer(code, conn)
+    }
+
+    /** Quét lại danh sách viewer trên Firebase để nhận những máy từng bị từ chối do đủ chỗ. */
+    private fun rescanPendingViewers(code: String) {
+        if (stopping || viewerConns.size >= MAX_VIEWERS_PER_CAMERA) return
+        FirebaseDb.root.child("rooms").child(code).child("viewers").get()
+            .addOnSuccessListener { snap ->
+                snap.children.forEach { child ->
+                    if (!stopping && viewerConns.size < MAX_VIEWERS_PER_CAMERA) admitViewer(code, child)
+                }
+            }
+    }
+
+    private val zombieChecks = HashMap<String, Runnable>()
+
+    private fun scheduleZombieCheck(code: String, viewerId: String) {
+        if (zombieChecks.containsKey(viewerId)) return
+        val r = Runnable {
+            zombieChecks.remove(viewerId)
+            val ref = FirebaseDb.root.child("rooms").child(code).child("viewers").child(viewerId)
+            ref.child("present").get().addOnSuccessListener { p ->
+                if (!p.exists() && !stopping) {
+                    Log.d(TAG, "Viewer $viewerId vắng mặt > ${ZOMBIE_TIMEOUT_MS / 1000}s — xoá để giải phóng slot")
+                    ref.removeValue()
+                }
+            }
+        }
+        zombieChecks[viewerId] = r
+        handler.postDelayed(r, ZOMBIE_TIMEOUT_MS)
+    }
+
+    private fun cancelZombieCheck(viewerId: String) {
+        zombieChecks.remove(viewerId)?.let { handler.removeCallbacks(it) }
     }
 
     /** Mở kênh WebRTC riêng cho 1 máy xem, gửi offer CHỈ với DataChannel để truyền tệp/ảnh -
@@ -377,7 +426,7 @@ class CameraStreamService : Service() {
      *  luôn dọn sạch danh sách máy xem trên Firebase như nhau, không để rác lại tuỳ đường dừng. */
     private fun markRoomEnded() {
         roomCode?.let { code ->
-            val roomRef = FirebaseDatabase.getInstance().reference.child("rooms").child(code)
+            val roomRef = FirebaseDb.root.child("rooms").child(code)
             roomRef.child("status").setValue("ended")
             roomRef.child("viewers").removeValue()
         }
@@ -428,6 +477,8 @@ class CameraStreamService : Service() {
             conn.signalingClient?.release()
         }
         viewerConns.clear()
+        zombieChecks.values.forEach { handler.removeCallbacks(it) }
+        zombieChecks.clear()
         viewersChildListener?.let { viewersListenerRef?.removeEventListener(it) }
         viewersChildListener = null
         viewersListenerRef = null
@@ -471,6 +522,8 @@ class CameraStreamService : Service() {
         const val ACTION_STOP_SHARING = "action_stop_sharing"
         private const val NOTIF_ID = 43
 
+        /** Viewer vắng 'present' lâu hơn mức này bị coi là đã bỏ đi hẳn và bị xoá. */
+        private const val ZOMBIE_TIMEOUT_MS = 60_000L
         private const val BASE_RECONNECT_DELAY_MS = 2000L
         private const val MAX_RECONNECT_DELAY_MS = 30_000L
 

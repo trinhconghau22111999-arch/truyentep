@@ -3,7 +3,6 @@ package Com.hau.name.webrtc
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.DatabaseReference
-import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 
 /**
@@ -46,7 +45,7 @@ class SignalingClient(
     }
 
     private val viewerRef: DatabaseReference =
-        FirebaseDatabase.getInstance().reference
+        Com.hau.name.FirebaseDb.root
             .child("rooms").child(roomCode).child("viewers").child(viewerId)
 
     private val localIcePath get() = if (isHost) "iceCandidatesHost" else "iceCandidatesCtrl"
