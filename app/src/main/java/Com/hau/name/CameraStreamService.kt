@@ -275,6 +275,10 @@ class CameraStreamService : Service() {
         if (stopping || conn.removed) return
         val factory = peerFactory ?: return
 
+        // Chi xu ly su kien cua DUNG kenh hien tai - su kien tre tu kenh CU (da release)
+        // khong duoc kich hoat reconnect lan nua, nhat la huy mat kenh MOI vua dung xong.
+        var sigRef: SignalingClient? = null
+        var pcmRef: PeerConnectionManager? = null
         val sigClient = SignalingClient(
             roomCode = code, viewerId = conn.viewerId, isHost = true,
             listener = object : SignalingClient.Listener {
@@ -284,11 +288,13 @@ class CameraStreamService : Service() {
                     conn.peerConnectionManager?.addIceCandidate(sdpMid, sdpMLineIndex, candidate)
                 }
                 override fun onRemoteDisconnected() {
+                    if (conn.signalingClient !== sigRef) return
                     Log.d(TAG, "Máy xem ${conn.viewerId} mất kết nối tạm thời — sẽ tự nối lại")
                     scheduleReconnectForViewer(code, conn)
                 }
             }
         )
+        sigRef = sigClient
         conn.signalingClient = sigClient
 
         val pcm = PeerConnectionManager(
@@ -300,13 +306,16 @@ class CameraStreamService : Service() {
                 updateNotification()
             },
             onDisconnected = {
+                if (conn.peerConnectionManager === pcmRef) {
                 Log.d(TAG, "Mất kết nối WebRTC với máy xem ${conn.viewerId} — sẽ tự nối lại")
                 scheduleReconnectForViewer(code, conn)
+                }
             },
             onFileReceived = { name, mimeType, bytes ->
                 saveReceivedFileToDownloads(name, mimeType, bytes)
             }
         )
+        pcmRef = pcm
         conn.peerConnectionManager = pcm
         pcm.init()
         pcm.startFileTransferOffer()
