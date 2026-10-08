@@ -419,10 +419,11 @@ class PhotoCaptureActivity : AppCompatActivity() {
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
                     lastPhotoUri = output.savedUri
                     btnViewLastPhoto.visibility = View.VISIBLE
-                    lastPhotoUri?.let { btnViewLastPhoto.setImageURI(it) }
                     // Chi luu tren may thoi - KHONG tu dong gui. Hien anh vua chup full man
                     // hinh de xem lai, chi gui khi nguoi dung chu dong vuot 2 ngon len tren.
-                    lastPhotoUri?.let { openPhotoReview(it) }
+                    // Giai ma anh o luong nen + thu nho (setImageURI tren luong UI voi anh
+                    // vai chuc MP lam may treo ~1-2s, keo theo mat ket noi luc bam chup).
+                    lastPhotoUri?.let { loadPhotoAsync(it) }
                 }
 
                 override fun onError(exc: ImageCaptureException) {
@@ -434,9 +435,48 @@ class PhotoCaptureActivity : AppCompatActivity() {
         )
     }
 
+    /** Giai ma anh o luong nen voi inSampleSize (toi da ~1600px canh dai, doc EXIF xoay),
+     *  roi cap nhat nut xem anh + man xem lai tren luong UI. */
+    private fun loadPhotoAsync(uri: Uri) {
+        Thread {
+            val bmp: Bitmap? = try {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+                var sample = 1
+                val longEdge = maxOf(bounds.outWidth, bounds.outHeight)
+                while (longEdge / (sample * 2) >= 1600) sample *= 2
+                val decoded = contentResolver.openInputStream(uri)?.use {
+                    BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
+                }
+                val degrees = try {
+                    contentResolver.openInputStream(uri)?.use { ins ->
+                        when (ExifInterface(ins).getAttributeInt(
+                            ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+                            ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+                            ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                            ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                            else -> 0f
+                        }
+                    } ?: 0f
+                } catch (e: Exception) { 0f }
+                if (decoded != null && degrees != 0f) {
+                    Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height,
+                        Matrix().apply { postRotate(degrees) }, true)
+                } else decoded
+            } catch (e: Throwable) { null }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (bmp != null) {
+                    btnViewLastPhoto.setImageBitmap(bmp)
+                    openPhotoReview(bmp)
+                }
+            }
+        }.start()
+    }
+
     /** Hien anh vua chup full man hinh, san sang cho vuot 2 ngon de gui. */
-    private fun openPhotoReview(uri: Uri) {
-        imageReviewPhoto.setImageURI(uri)
+    private fun openPhotoReview(bmp: Bitmap) {
+        imageReviewPhoto.setImageBitmap(bmp)
         imageReviewPhoto.translationY = 0f
         imageReviewPhoto.alpha = 1f
         textReviewHint.translationY = 0f

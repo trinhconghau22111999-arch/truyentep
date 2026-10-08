@@ -55,6 +55,8 @@ private const val DATA_CHANNEL_LABEL = "filetransfer"
 // noi lai. Gui 1 goi tin nho dinh ky de phia may tinh co cach xac nhan "du lieu THUC SU con
 // chay qua" thay vi chi dua vao trang thai bao cao boi API.
 private const val HEARTBEAT_INTERVAL_MS = 5000L
+// Cho toi da bay nhieu ms de ICE tu hoi phuc tu DISCONNECTED truoc khi dung lai ket noi.
+private const val DISCONNECT_GRACE_MS = 8000L
 
 /** ICE servers dùng STUN công khai của Google + TURN dự phòng nếu 2 máy khác mạng LAN. */
 private val ICE_SERVERS = listOf(
@@ -122,6 +124,27 @@ class PeerConnectionManager(
     // vi day la ben tao dataChannel.
     private val heartbeatHandler = Handler(Looper.getMainLooper())
     private var heartbeatRunnable: Runnable? = null
+
+    // Thoi gian cho DISCONNECTED tu hoi phuc truoc khi coi la mat ket noi that.
+    private val disconnectGraceHandler = Handler(Looper.getMainLooper())
+    private var disconnectGraceRunnable: Runnable? = null
+
+    private fun startDisconnectGrace() {
+        if (disconnectGraceRunnable != null) return
+        val r = Runnable {
+            disconnectGraceRunnable = null
+            if (peerConnection?.connectionState() != PeerConnection.PeerConnectionState.CONNECTED) {
+                onDisconnected()
+            }
+        }
+        disconnectGraceRunnable = r
+        disconnectGraceHandler.postDelayed(r, DISCONNECT_GRACE_MS)
+    }
+
+    private fun cancelDisconnectGrace() {
+        disconnectGraceRunnable?.let { disconnectGraceHandler.removeCallbacks(it) }
+        disconnectGraceRunnable = null
+    }
 
     private fun startHeartbeat() {
         stopHeartbeat()
@@ -192,11 +215,21 @@ class PeerConnectionManager(
                 Log.d(TAG, "PeerConnection state: $newState")
                 when (newState) {
                     PeerConnection.PeerConnectionState.CONNECTED -> {
+                        // Co the la tu DISCONNECTED tu hoi phuc -> huy lich ngat
+                        cancelDisconnectGrace()
                         signalingClient.markConnected()
                         onConnected()
                     }
-                    PeerConnection.PeerConnectionState.DISCONNECTED,
-                    PeerConnection.PeerConnectionState.FAILED -> onDisconnected()
+                    // DISCONNECTED la trang thai TAM THOI cua WebRTC (mat vai goi tin STUN
+                    // trong ~2-5s, vd luc may ban CPU/radio khi chup anh) va thuong TU
+                    // HOI PHUC thanh CONNECTED. Truoc day ngat+dung lai ket noi NGAY ->
+                    // cu bam chup la rot ~2s roi noi lai. Gio cho them mot khoang; chi
+                    // khi qua han van chua phuc hoi moi tinh la mat ket noi that.
+                    PeerConnection.PeerConnectionState.DISCONNECTED -> startDisconnectGrace()
+                    PeerConnection.PeerConnectionState.FAILED -> {
+                        cancelDisconnectGrace()
+                        onDisconnected()
+                    }
                     else -> {}
                 }
             }
@@ -507,6 +540,7 @@ class PeerConnectionManager(
     }
 
     fun release() {
+        cancelDisconnectGrace()
         stopHeartbeat()
         localVideoTrack?.dispose()
         dataChannel?.close()
