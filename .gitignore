@@ -6,3 +6,4 @@ local.properties
 *.iml
 app/google-services.json
 
+app/release.keystore

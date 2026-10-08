@@ -9,16 +9,39 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "qr.truyentep"
+        // ID MOI (khac "qr.truyentep" cu) -> Android coi la 1 app hoan toan moi.
+        applicationId = "com.hau.truyentep"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        // versionCode tang dan theo so lan build tren GitHub Actions -> ban sau luon
+        // cao hon ban truoc, cai de len duoc (cap nhat) ma khong can go app cu.
+        val runNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+        versionCode = 100 + runNumber
+        versionName = "1.0.$runNumber"
+    }
+
+    // Ky bang 1 keystore CO DINH (lay tu GitHub Secrets) - bat buoc de cac ban build
+    // khac nhau cai de len nhau duoc. Khong co keystore (build may local) thi dung
+    // khoa debug mac dinh.
+    val ksFile = file("release.keystore")
+    if (ksFile.exists()) {
+        signingConfigs {
+            create("fixed") {
+                storeFile = ksFile
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = "truyentep"
+                keyPassword = System.getenv("KEYSTORE_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         getByName("release") {
             isMinifyEnabled = false
+        }
+        if (ksFile.exists()) {
+            getByName("debug") { signingConfig = signingConfigs.getByName("fixed") }
+            getByName("release") { signingConfig = signingConfigs.getByName("fixed") }
         }
     }
 
