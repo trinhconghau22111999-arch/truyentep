@@ -78,6 +78,7 @@ class SendFileActivity : AppCompatActivity() {
         }
         val names = selectedUris.map { queryDisplayName(it) ?: "(tệp)" }
         textSelectedFiles.text = names.joinToString("\n") { "• $it" }
+        btnSendNow.visibility = android.view.View.VISIBLE
         btnSendNow.isEnabled = true
     }
 
@@ -105,7 +106,8 @@ class SendFileActivity : AppCompatActivity() {
         if (index >= selectedUris.size) {
             textSendingStatus.text = "Đã gửi xong ${selectedUris.size} tệp"
             progressSending.visibility = android.view.View.GONE
-            btnSendNow.isEnabled = true
+            // Gui xong thi AN han nut "Gui" (se hien lai khi chon tep moi)
+            btnSendNow.visibility = android.view.View.GONE
             btnPickFiles.isEnabled = true
             return
         }
