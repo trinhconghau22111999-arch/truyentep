@@ -173,12 +173,30 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent" />
 
-        <!-- CHI hien sau khi da chup it nhat 1 tam trong phien nay - ghim gan canh trai -->
+        <!-- Nut mo man hinh NHAP CHU sang may tinh - o goc duoi-trai (vi tri cu cua nut xem anh) -->
+        <TextView
+            android:id="@+id/btn_open_text_input"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="24dp"
+            android:background="@drawable/bg_round_button"
+            android:clickable="true"
+            android:contentDescription="Nhập chữ sang máy tính"
+            android:focusable="true"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:text="@string/btn_text_input"
+            android:textSize="22sp"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="@id/btn_capture"
+            app:layout_constraintBottom_toBottomOf="@id/btn_capture" />
+
+        <!-- CHI hien sau khi da chup it nhat 1 tam trong phien nay - nam canh nut nhap chu -->
         <ImageView
             android:id="@+id/btn_view_last_photo"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:layout_marginStart="24dp"
+            android:layout_marginStart="84dp"
             android:background="@drawable/bg_round_button"
             android:clickable="true"
             android:contentDescription="Xem ảnh vừa chụp"

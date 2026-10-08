@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#121212"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/text_input_title"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="@string/text_input_hint_top"
+        android:textColor="#B0B0B0"
+        android:textSize="13sp" />
+
+    <!-- CHI HIEN 1 DONG (maxLines=1, tu cuon theo con tro => luon thay dong go gan nhat).
+         Van ban that van duoc giu day du ben trong o nay va gui nguyen ven sang may tinh. -->
+    <EditText
+        android:id="@+id/edit_input"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:background="#1E1E2E"
+        android:gravity="top|start"
+        android:hint="Gõ ở đây…"
+        android:inputType="textMultiLine|textNoSuggestions"
+        android:maxLines="1"
+        android:padding="14dp"
+        android:textColor="#FFFFFF"
+        android:textColorHint="#707070"
+        android:textSize="20sp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btn_paste"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:layout_weight="1"
+            android:text="📋 Dán" />
+
+        <Button
+            android:id="@+id/btn_clear_box"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="🧹 Xoá ô" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/text_input_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:textColor="#9E9E9E"
+        android:textSize="13sp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="“Xoá ô” chỉ làm trống ô nhập trên điện thoại (không xoá chữ đã nhập trên web) - dùng khi bạn đổi sang ô khác trên máy tính."
+        android:textColor="#707070"
+        android:textSize="12sp" />
+
+    <Space
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <Button
+        android:id="@+id/btn_text_input_back"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Xong" />
+</LinearLayout>

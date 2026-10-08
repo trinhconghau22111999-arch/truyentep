@@ -3,6 +3,9 @@
 
     <string name="pairing_code_chip_format">Mã: %1$s</string>
     <string name="hint_swipe_up_to_send">Vuốt 2 ngón tay lên để gửi sang máy tính</string>
+    <string name="btn_text_input">⌨️</string>
+    <string name="text_input_title">Nhập chữ sang máy tính</string>
+    <string name="text_input_hint_top">Đặt con trỏ vào ô nhập trên web ở máy tính, rồi gõ ở đây - chữ hiện trên web ngay.</string>
     <string name="btn_send_file">📤 Gửi tệp</string>
     <string name="connection_status_connected">Đã kết nối %1$d/%2$d</string>
     <string name="connection_status_disconnected">Chưa kết nối</string>

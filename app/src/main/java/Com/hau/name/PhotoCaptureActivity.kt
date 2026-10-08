@@ -175,6 +175,11 @@ class PhotoCaptureActivity : AppCompatActivity() {
         btnFlash.setOnClickListener { toggleFlash() }
         btnSwitchCamera.setOnClickListener { toggleCamera() }
         btnViewLastPhoto.setOnClickListener { openLastPhotoViewer() }
+        findViewById<View>(R.id.btn_open_text_input).setOnClickListener {
+            startActivity(Intent(this, TextInputActivity::class.java).apply {
+                putExtra(TextInputActivity.EXTRA_ROOM_CODE, roomCode)
+            })
+        }
         btnSendFile.setOnClickListener {
             startActivity(Intent(this, SendFileActivity::class.java).apply {
                 putExtra(SendFileActivity.EXTRA_ROOM_CODE, roomCode)

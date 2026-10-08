@@ -142,6 +142,48 @@ class CameraStreamService : Service() {
     }
 
     /**
+     * Gui 1 thao tac sua van ban sang cac may tinh dang ket noi: XOA [del] ky tu ngay truoc
+     * con tro roi CHEN [ins] tai do (tinh nang nhap chu tu dien thoai). Van ban dai duoc
+     * tach thanh nhieu tin nho (gui lan luot, kenh DataChannel dam bao dung thu tu); chi tin
+     * dau mang [del]. @return so may tinh nhan DUNG DU - 0 nghia la chua gui duoc (chua ket
+     * noi/mat ket noi giua chung) -> noi goi se tu gui lai sau.
+     */
+    fun sendTextEditToAllViewers(del: Int, ins: String): Int {
+        val targets = viewerConns.values.mapNotNull { it.peerConnectionManager }
+            .filter { it.isReadyToSendFile() }
+        if (targets.isEmpty()) return 0
+        val chunks = splitTextForSending(ins, 3000)
+        var okCount = 0
+        for (pcm in targets) {
+            var allSent = true
+            for ((idx, part) in chunks.withIndex()) {
+                val json = org.json.JSONObject().apply {
+                    put("type", "text-edit")
+                    put("del", if (idx == 0) del else 0)
+                    put("ins", part)
+                }.toString()
+                if (!pcm.sendJsonMessage(json)) { allSent = false; break }
+            }
+            if (allSent) okCount++
+        }
+        return okCount
+    }
+
+    /** Tach chuoi thanh cac doan <= [maxLen] ky tu, khong cat doi cap ky tu thay the (emoji). */
+    private fun splitTextForSending(text: String, maxLen: Int): List<String> {
+        if (text.length <= maxLen) return listOf(text)
+        val out = mutableListOf<String>()
+        var i = 0
+        while (i < text.length) {
+            var end = minOf(i + maxLen, text.length)
+            if (end < text.length && Character.isHighSurrogate(text[end - 1])) end--
+            out.add(text.substring(i, end))
+            i = end
+        }
+        return out
+    }
+
+    /**
      * Dừng chia sẻ NGAY LẬP TỨC, ĐỒNG BỘ (chạy trong cùng tiến trình - không qua hàng đợi
      * Intent như trước) - dùng chung cho CẢ 3 đường dừng: nút "Kết thúc" trên notification
      * (qua ACTION_STOP_SHARING), PhotoCaptureActivity.exitAppAndDisconnect() (gọi thẳng vào

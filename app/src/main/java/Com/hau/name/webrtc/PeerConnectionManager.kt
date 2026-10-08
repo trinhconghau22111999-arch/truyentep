@@ -510,6 +510,22 @@ class PeerConnectionManager(
         }
     }
 
+    /** Gui 1 tin nhan JSON (chuoi) qua DataChannel - dung cho tinh nang nhap chu tu dien
+     *  thoai. Cho nhe neu bo dem gui dang day (vd dan van ban rat dai). true = da gui. */
+    fun sendJsonMessage(json: String): Boolean {
+        val channel = dataChannel ?: return false
+        if (!isReadyToSendFile()) return false
+        return try {
+            var waited = 0
+            while (channel.bufferedAmount() > BUFFERED_AMOUNT_HIGH_WATERMARK && waited < 150) {
+                Thread.sleep(20L); waited++
+            }
+            channel.send(DataChannel.Buffer(
+                java.nio.ByteBuffer.wrap(json.toByteArray(Charsets.UTF_8)), false
+            ))
+        } catch (e: Exception) { false }
+    }
+
     /** true neu ca PeerConnection va DataChannel deu dang san sang de gui tep. */
     fun isReadyToSendFile(): Boolean {
         return peerConnection?.connectionState() == PeerConnection.PeerConnectionState.CONNECTED &&
