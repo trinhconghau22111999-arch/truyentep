@@ -203,6 +203,37 @@ class CameraStreamService : Service() {
         stopSelf()
     }
 
+    /**
+     * Doi sang MA MOI ngay trong luc dang chay (nguoi dung bam vao o "Ma" khi chua ket noi):
+     * go listener may xem cua ma cu, dong phong cu tren Firebase, roi theo doi + mo phong moi.
+     * Khong dong Service/PeerConnectionFactory nen camera va man hinh khong bi gian doan.
+     */
+    fun changeRoomCode(newCode: String) {
+        val old = roomCode
+        viewerConns.values.forEach { conn ->
+            conn.removed = true
+            conn.reconnectRunnable?.let { handler.removeCallbacks(it) }
+            conn.peerConnectionManager?.release()
+            conn.signalingClient?.release()
+        }
+        viewerConns.clear()
+        viewersChildListener?.let { viewersListenerRef?.removeEventListener(it) }
+        viewersChildListener = null
+        viewersListenerRef = null
+
+        val root = FirebaseDatabase.getInstance().reference.child("rooms")
+        if (old != null && old != newCode) {
+            root.child(old).child("status").setValue("ended")
+            root.child(old).child("viewers").removeValue()
+        }
+        roomCode = newCode
+        root.child(newCode).updateChildren(
+            mapOf("status" to "waiting", "consentGivenAt" to System.currentTimeMillis())
+        )
+        watchViewers(newCode)
+        notifyStatusListeners()
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP_SHARING) {
             stopSharingNow()

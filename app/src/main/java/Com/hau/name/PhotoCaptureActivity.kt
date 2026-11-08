@@ -200,6 +200,25 @@ class PhotoCaptureActivity : AppCompatActivity() {
         textReviewHint = findViewById(R.id.text_review_hint)
 
         textPairingCodeChip.text = getString(R.string.pairing_code_chip_format, roomCode ?: "------")
+        // Chua ket noi thi bam vao o "Ma" de tu doi sang ma moi (6 so ngau nhien, luu lai lam ma co dinh).
+        textPairingCodeChip.setOnClickListener {
+            if (connectedNow) return@setOnClickListener
+            val service = CameraStreamService.instance
+            if (service == null) {
+                Toast.makeText(this, "Dịch vụ chưa sẵn sàng, thử lại sau giây lát", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            var newCode: String
+            do {
+                newCode = (100000..999999).random().toString()
+            } while (newCode == roomCode)
+            getSharedPreferences(CameraActivity.PREFS_NAME, MODE_PRIVATE).edit()
+                .putString(CameraActivity.KEY_FIXED_CODE, newCode).apply()
+            roomCode = newCode
+            service.changeRoomCode(newCode)
+            textPairingCodeChip.text = getString(R.string.pairing_code_chip_format, newCode)
+            Toast.makeText(this, "Đã đổi sang mã mới: $newCode", Toast.LENGTH_SHORT).show()
+        }
 
         // Man hinh nay gio la man hinh chinh duy nhat cua app (thay cho CameraActivity
         // truoc day). KHONG con nut thoat rieng - bam Back (nut he thong) se thoat han
