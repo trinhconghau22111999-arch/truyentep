@@ -200,24 +200,10 @@ class PhotoCaptureActivity : AppCompatActivity() {
         textReviewHint = findViewById(R.id.text_review_hint)
 
         textPairingCodeChip.text = getString(R.string.pairing_code_chip_format, roomCode ?: "------")
-        // Chua ket noi thi bam vao o "Ma" de tu doi sang ma moi (6 so ngau nhien, luu lai lam ma co dinh).
+        // Chua ket noi thi bam vao o "Ma" de TU NHAP ma moi (6 so), luu lai lam ma co dinh.
         textPairingCodeChip.setOnClickListener {
             if (connectedNow) return@setOnClickListener
-            val service = CameraStreamService.instance
-            if (service == null) {
-                Toast.makeText(this, "Dịch vụ chưa sẵn sàng, thử lại sau giây lát", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            var newCode: String
-            do {
-                newCode = (100000..999999).random().toString()
-            } while (newCode == roomCode)
-            getSharedPreferences(CameraActivity.PREFS_NAME, MODE_PRIVATE).edit()
-                .putString(CameraActivity.KEY_FIXED_CODE, newCode).apply()
-            roomCode = newCode
-            service.changeRoomCode(newCode)
-            textPairingCodeChip.text = getString(R.string.pairing_code_chip_format, newCode)
-            Toast.makeText(this, "Đã đổi sang mã mới: $newCode", Toast.LENGTH_SHORT).show()
+            showChangeCodeDialog()
         }
 
         // Man hinh nay gio la man hinh chinh duy nhat cua app (thay cho CameraActivity
@@ -275,6 +261,60 @@ class PhotoCaptureActivity : AppCompatActivity() {
         } else {
             cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
         }
+    }
+
+    /** Hop thoai cho nguoi dung tu nhap ma ghep noi moi (dung 6 chu so). */
+    private fun showChangeCodeDialog() {
+        val input = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            filters = arrayOf(android.text.InputFilter.LengthFilter(6))
+            hint = "6 chữ số"
+            setText(roomCode ?: "")
+            setSelectAllOnFocus(true)
+            gravity = android.view.Gravity.CENTER
+            textSize = 22f
+        }
+        val pad = (20 * resources.displayMetrics.density).toInt()
+        val box = FrameLayout(this).apply {
+            setPadding(pad, pad / 2, pad, 0)
+            addView(input)
+        }
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Nhập mã mới")
+            .setView(box)
+            .setPositiveButton("Đổi mã", null)
+            .setNegativeButton("Huỷ", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setOnClickListener {
+                val newCode = input.text.toString().trim()
+                if (!Regex("\\d{6}").matches(newCode)) {
+                    Toast.makeText(this, "Mã phải đủ 6 chữ số", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                if (connectedNow) { dialog.dismiss(); return@setOnClickListener }
+                applyNewCode(newCode)
+                dialog.dismiss()
+            }
+            input.requestFocus()
+            dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        }
+        dialog.show()
+    }
+
+    private fun applyNewCode(newCode: String) {
+        if (newCode == roomCode) return
+        val service = CameraStreamService.instance
+        if (service == null) {
+            Toast.makeText(this, "Dịch vụ chưa sẵn sàng, thử lại sau giây lát", Toast.LENGTH_SHORT).show()
+            return
+        }
+        getSharedPreferences(CameraActivity.PREFS_NAME, MODE_PRIVATE).edit()
+            .putString(CameraActivity.KEY_FIXED_CODE, newCode).apply()
+        roomCode = newCode
+        service.changeRoomCode(newCode)
+        textPairingCodeChip.text = getString(R.string.pairing_code_chip_format, newCode)
+        Toast.makeText(this, "Đã đổi sang mã mới: $newCode", Toast.LENGTH_SHORT).show()
     }
 
     /** Cong them padding/margin = chieu cao status bar (tren) va navigation bar (duoi) cho
